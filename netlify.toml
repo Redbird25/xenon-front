@@ -1,0 +1,36 @@
+# Netlify configuration for the frontend app (inside /frontend)
+
+[build]
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # You can set this in Netlify UI instead of committing a value
+  # VITE_API_BASE_URL = "https://api.example.com"
+
+## Local development via `netlify dev`
+[dev]
+  command = "npm run dev"
+  port = 3000
+  targetPort = 3000
+
+## SPA fallback: route all non-file paths to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+## Long-term cache for hashed assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    cache-control = "public, max-age=31536000, immutable"
+
+## Example per-environment overrides
+[context.production.environment]
+  # VITE_API_BASE_URL = "https://api.prod.example.com"
+
+[context.deploy-preview.environment]
+  # VITE_API_BASE_URL = "https://api-preview.example.com"
+
