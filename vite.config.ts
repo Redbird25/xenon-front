@@ -10,17 +10,12 @@ export default defineConfig({
   preview: {
     port: 4173,
   },
+  // Keep default chunking to avoid rare interop issues on some CDNs/UAs
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('/react/') || id.includes('react-router')) return 'react-vendor';
-            if (id.includes('@mui') || id.includes('@emotion')) return 'mui';
-            if (id.includes('framer-motion') || id.includes('@tanstack') || id.includes('axios') || id.includes('recharts') || id.includes('socket.io-client')) return 'vendor';
-          }
-        },
-      },
+    target: 'es2018',
+    sourcemap: false,
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 });
