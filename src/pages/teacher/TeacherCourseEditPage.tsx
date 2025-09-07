@@ -20,13 +20,14 @@ import {
 } from '@mui/icons-material';
 import { Add, Delete } from '@mui/icons-material';
 import { useToast } from '../../contexts/ToastContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { BackendCourse } from '../../services/api';
 
 const TeacherCourseEditPage: React.FC = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const qc = useQueryClient();
 
   const [courseData, setCourseData] = useState({
     title: 'Introduction to Python Programming',
@@ -76,24 +77,29 @@ const TeacherCourseEditPage: React.FC = () => {
 
   useEffect(() => {
     if (!course) return;
+    const modulesSorted = [...(course.modules || [])]
+      .sort((a, b) => (a.position || 0) - (b.position || 0))
+      .map((m, mi) => ({
+        id: m.id,
+        title: m.title,
+        description: (m as any).description || 'Module description',
+        order: mi + 1,
+        lessons: [...(m.lessons || [])]
+          .sort((a, b) => (a.position || 0) - (b.position || 0))
+          .map((l, li) => ({
+            id: l.id,
+            title: l.title,
+            description: l.description || l.title || 'Lesson description',
+            order: li + 1,
+            minMastery: l.minMastery ?? 0.6,
+          })),
+      }));
     setCourseData((prev) => ({
       ...prev,
       title: course.title,
-      description: course.description,
+      description: course.description || 'Course description',
       status: (course.status || 'DRAFT').toLowerCase(),
-      modules: (course.modules || []).map((m) => ({
-        id: m.id,
-        title: m.title,
-        description: '',
-        order: m.position,
-        lessons: (m.lessons || []).map((l) => ({
-          id: l.id,
-          title: l.title,
-          description: l.description || '',
-          order: l.position,
-          minMastery: l.minMastery ?? 0.6,
-        })),
-      })),
+      modules: modulesSorted,
     }));
   }, [course?.id, course?.status]);
 
@@ -112,22 +118,65 @@ const TeacherCourseEditPage: React.FC = () => {
   }, [course?.status]);
 
   const handleSave = async () => {
+    if (!courseId) return;
     setError('');
     setSuccess('');
     setIsSubmitting(true);
 
     try {
-      // Mock save operation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Basic validation: titles must not be blank
+      const hasEmptyTitles = (courseData.modules || []).some((m: any) => {
+        const mt = String(m.title || '').trim();
+        if (!mt) return true;
+        return (m.lessons || []).some((l: any) => !String(l.title || '').trim());
+      });
+      if (hasEmptyTitles) {
+        setIsSubmitting(false);
+        setError('Module and lesson titles must not be blank');
+        showToast('Please fill in all module and lesson titles', 'error');
+        return;
+      }
+      // 1) Patch meta — send only changed fields
+      const uiStatus = (courseData.status || '').toUpperCase();
+      const metaPatch: any = {};
+      if (!course || courseData.title !== course.title) metaPatch.title = courseData.title;
+      if (!course || courseData.description !== course.description) metaPatch.description = courseData.description;
+      if (!course || uiStatus !== course.status) metaPatch.status = uiStatus;
+      if (Object.keys(metaPatch).length > 0) {
+        await api.patchCourseMeta(courseId, metaPatch);
+      }
 
+      // 2) Put structure — always send full structure if present
+      if (Array.isArray(courseData.modules) && courseData.modules.length > 0) {
+        const origModuleIds = new Set((course?.modules || []).map(m => m.id));
+        const origLessonIds = new Set((course?.modules || []).flatMap(m => (m.lessons || []).map(l => l.id)));
+        const modulesPayload = [...courseData.modules]
+          .sort((a:any,b:any)=> (a.order||0)-(b.order||0))
+          .map((m:any, idx:number) => ({
+            ...(m.id && origModuleIds.has(m.id) ? { id: m.id } : {}),
+            title: (m.title && String(m.title).trim()) || `Module ${idx + 1}`,
+            description: (m.description && String(m.description).trim()) || m.title || 'Module description',
+            position: m.order || (idx + 1),
+            lessons: [...(m.lessons||[])]
+              .sort((a:any,b:any)=> (a.order||0)-(b.order||0))
+              .map((l:any, j:number) => ({
+                ...(l.id && origLessonIds.has(l.id) ? { id: l.id } : {}),
+                title: (l.title && String(l.title).trim()) || `Lesson ${j + 1}`,
+                description: (l.description && String(l.description).trim()) || l.title || 'Lesson description',
+                position: l.order || (j + 1),
+                minMastery: Number(l.minMastery) || 0,
+              }))
+          }));
+        await api.putCourseStructure(courseId, { modules: modulesPayload });
+      }
+
+      await qc.invalidateQueries({ queryKey: ['course', courseId] });
       setSuccess('Course updated successfully!');
-
-      setTimeout(() => {
-        navigate('/courses');
-      }, 1500);
-
+      showToast('Course updated', 'success');
     } catch (err: any) {
-      setError('Failed to update course');
+      console.error(err);
+      setError(err?.message || 'Failed to update course');
+      showToast('Failed to update course', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -302,7 +351,7 @@ const TeacherCourseEditPage: React.FC = () => {
               </Alert>
             )}
 
-            {courseData.modules.map((module, moduleIndex) => (
+            {[...courseData.modules].sort((a,b)=> (a.order||0)-(b.order||0)).map((module, moduleIndex) => (
               <Accordion key={module.id} sx={{ mb: 2 }}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
                   <Box display="flex" alignItems="center" gap={2} width="100%">
@@ -352,7 +401,7 @@ const TeacherCourseEditPage: React.FC = () => {
                         Lessons
                       </Typography>
 
-                      {module.lessons.map((lesson, lessonIndex) => (
+                      {[...module.lessons].sort((a,b)=> (a.order||0)-(b.order||0)).map((lesson, lessonIndex) => (
                         <Paper
                           key={lesson.id}
                           sx={{

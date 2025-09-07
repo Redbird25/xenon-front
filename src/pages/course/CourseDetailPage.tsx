@@ -144,7 +144,9 @@ const CourseDetailPage: React.FC = () => {
         </>
 
       ) : (
-        (course?.modules || []).map((module, idx) => (
+        ([...(course?.modules || [])]
+          .sort((a,b)=> (a.position||0)-(b.position||0))
+        ).map((module, idx) => (
           <Accordion key={module.id} defaultExpanded={idx === 0} sx={{ mb: 2 }}>
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box display="flex" alignItems="center" gap={2}>
@@ -154,7 +156,7 @@ const CourseDetailPage: React.FC = () => {
             </AccordionSummary>
             <AccordionDetails>
               <Box>
-                {(module.lessons || []).map((lesson) => (
+                {[...(module.lessons || [])].sort((a,b)=> (a.position||0)-(b.position||0)).map((lesson) => (
                   <Box key={lesson.id} sx={{ mb: 2 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                       <Box display="flex" alignItems="center" gap={2}>

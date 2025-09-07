@@ -171,6 +171,30 @@ class ApiService {
     return res.data;
   }
 
+  // Update course meta (PATCH only changed fields)
+  async patchCourseMeta(courseId: string, patch: Partial<Pick<BackendCourse, 'title' | 'description' | 'status'>>): Promise<BackendCourse> {
+    const res = await this.api.patch<BackendCourse>(`/api/course/${courseId}`, patch);
+    return res.data;
+  }
+
+  // Replace course structure (PUT full layout)
+  async putCourseStructure(courseId: string, payload: { modules: Array<{
+    id?: string;
+    title: string;
+    description?: string;
+    position: number;
+    lessons: Array<{
+      id?: string;
+      title: string;
+      description?: string;
+      position: number;
+      minMastery: number;
+    }>
+  }>}): Promise<BackendCourse> {
+    const res = await this.api.put<BackendCourse>(`/api/course/${courseId}/structure`, payload);
+    return res.data;
+  }
+
   async getStudentProfile(): Promise<StudentProfileDTO> {
     const res = await this.api.get<StudentProfileDTO>('/student/profile');
     return res.data;
