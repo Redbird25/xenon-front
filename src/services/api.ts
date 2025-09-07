@@ -65,9 +65,14 @@ class ApiService {
   private api: AxiosInstance;
 
   constructor() {
-    const baseURL = (import.meta as any).env?.DEV
+    const env = (import.meta as any).env || {};
+    const isDev = !!env.DEV;
+    const configured: string | undefined = env?.VITE_API_BASE_URL;
+    // To avoid Mixed Content on HTTPS (Netlify), use same-origin relative base in prod
+    // unless an explicit HTTPS API base is provided.
+    const baseURL = isDev
       ? ''
-      : ((import.meta as any).env?.VITE_API_BASE_URL || 'http://75.119.145.146:8899');
+      : (configured && /^https:\/\//i.test(configured) ? configured : '');
     this.api = axios.create({
       baseURL,
       timeout: 30000,
