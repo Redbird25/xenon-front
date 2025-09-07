@@ -15,13 +15,8 @@
   port = 3000
   targetPort = 3000
 
-## SPA fallback: route all non-file paths to index.html
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
-# Proxy API to backend in production (Netlify)
+## Proxy API to backend in production (Netlify)
+## Put these BEFORE the SPA fallback so they take precedence
 [[redirects]]
   from = "/auth/*"
   to = "http://75.119.145.146:8899/auth/:splat"
@@ -29,8 +24,8 @@
   force = true
 
 [[redirects]]
-  from = "/ai/*"
-  to = "http://75.119.145.146:8899/ai/:splat"
+  from = "/api/*"
+  to = "http://75.119.145.146:8899/api/:splat"
   status = 200
   force = true
 
@@ -41,10 +36,16 @@
   force = true
 
 [[redirects]]
-  from = "/api/*"
-  to = "http://75.119.145.146:8899/api/:splat"
+  from = "/ai/*"
+  to = "http://75.119.145.146:8899/ai/:splat"
   status = 200
   force = true
+
+## SPA fallback: route all non-file paths to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
 
 ## Long-term cache for hashed assets
 [[headers]]
