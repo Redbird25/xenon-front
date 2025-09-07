@@ -111,6 +111,17 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+// Student profile & onboarding
+export type LearningStyle = 'VIDEO' | 'TEXT' | 'MIXED';
+
+export interface StudentProfileDTO {
+  id: string;
+  userId: string;
+  interests: string[];
+  hobbies: string[];
+  learningStyle: LearningStyle;
+}
+
 export interface SearchResult {
   chunkId: number;
   content: string;

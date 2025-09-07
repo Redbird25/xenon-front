@@ -10,6 +10,7 @@ interface Props {
     format?: 'video' | 'text' | 'mixed';
     reminders?: boolean;
   };
+  mandatory?: boolean;
   onCancel: () => void;
   onFinish: (data: { interests: string; hobbies: string; format: 'video'|'text'|'mixed'; reminders: boolean }) => void;
 }
@@ -18,7 +19,7 @@ const steps = ['Welcome', 'Preferences', 'Notifications'];
 
 const MotionBox = motion(Box as any);
 
-const WelcomeOnboarding: React.FC<Props> = ({ open, initial, onCancel, onFinish }) => {
+const WelcomeOnboarding: React.FC<Props> = ({ open, initial, mandatory = false, onCancel, onFinish }) => {
   const [active, setActive] = useState(0);
   const [interests, setInterests] = useState(initial?.interests || '');
   const [hobbies, setHobbies] = useState(initial?.hobbies || '');
@@ -29,7 +30,16 @@ const WelcomeOnboarding: React.FC<Props> = ({ open, initial, onCancel, onFinish 
   const back = () => setActive((a) => Math.max(a - 1, 0));
 
   return (
-    <Dialog open={open} onClose={onCancel} maxWidth="md" fullWidth>
+    <Dialog
+      open={open}
+      onClose={(e, reason) => {
+        if (mandatory && (reason === 'backdropClick' || reason === 'escapeKeyDown')) return;
+        onCancel();
+      }}
+      maxWidth="md"
+      fullWidth
+      disableEscapeKeyDown={mandatory}
+    >
       <DialogTitle>
         <Typography variant="h5" fontWeight={800}>Let’s personalize your learning</Typography>
       </DialogTitle>
@@ -69,7 +79,7 @@ const WelcomeOnboarding: React.FC<Props> = ({ open, initial, onCancel, onFinish 
         </MotionBox>
 
         <Stack direction="row" justifyContent="space-between" sx={{ mt: 3 }}>
-          <Button onClick={onCancel} color="inherit">Skip</Button>
+          {!mandatory && <Button onClick={onCancel} color="inherit">Skip</Button>}
           <Box>
             <Button disabled={active===0} onClick={back} sx={{ mr: 1 }}>Back</Button>
             {active < steps.length - 1 ? (

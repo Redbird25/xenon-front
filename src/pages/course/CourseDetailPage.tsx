@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -11,6 +11,9 @@ import {
   LinearProgress,
   Avatar,
   Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { Link } from 'react-router-dom';
@@ -23,116 +26,27 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import OnboardingDialog from '../../components/onboarding/OnboardingDialog';
+import { useQuery } from '@tanstack/react-query';
+import api, { BackendCourse } from '../../services/api';
+import ExpandMore from '@mui/icons-material/ExpandMore';
 
 const CourseDetailPage: React.FC = () => {
   const { courseId } = useParams();
   const { user } = useAuth();
-  const [enrolled, setEnrolled] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const location = useLocation() as any;
   const { showToast } = useToast();
 
-  // Mock course data
-  const course = {
-    id: courseId,
-    title: 'Introduction to Python Programming',
-    description: 'Learn the fundamentals of Python programming language from basics to advanced concepts. This comprehensive course covers everything you need to start your journey in programming.',
-    teacher: {
-      name: 'Dr. Sarah Johnson',
-      avatar: '',
-      bio: 'Senior Software Engineer with 10+ years of experience in Python development'
-    },
-    stats: {
-      enrolled: 156,
-      rating: 4.8,
-      duration: '8 weeks',
-      level: 'Beginner',
-      language: 'English'
-    },
-    modules: [
-      {
-        id: '1',
-        title: 'Getting Started with Python',
-        description: 'Introduction to Python programming',
-        order: 1,
-        lessons: [
-          {
-            id: '1',
-            title: 'What is Python?',
-            description: 'Overview of Python programming language',
-            order: 1,
-            completed: true,
-            duration: '15 min'
-          },
-          {
-            id: '2',
-            title: 'Installing Python',
-            description: 'Setting up your development environment',
-            order: 2,
-            completed: true,
-            duration: '10 min'
-          },
-          {
-            id: '3',
-            title: 'Your First Python Program',
-            description: 'Writing and running your first script',
-            order: 3,
-            completed: false,
-            duration: '20 min'
-          }
-        ]
-      },
-      {
-        id: '2',
-        title: 'Variables and Data Types',
-        description: 'Understanding Python data types and variables',
-        order: 2,
-        lessons: [
-          {
-            id: '4',
-            title: 'Variables',
-            description: 'Creating and using variables',
-            order: 1,
-            completed: false,
-            duration: '25 min'
-          },
-          {
-            id: '5',
-            title: 'Data Types',
-            description: 'Numbers, strings, and booleans',
-            order: 2,
-            completed: false,
-            duration: '30 min'
-          }
-        ]
-      }
-    ]
-  };
+  const { data: course, isLoading } = useQuery<BackendCourse>({
+    queryKey: ['course_detail', courseId],
+    queryFn: () => api.getCourseById(courseId || ''),
+    enabled: !!courseId,
+    staleTime: 120000,
+    refetchOnWindowFocus: false,
+  });
 
-  const handleEnroll = () => {
-    setEnrolled(true);
-    showToast('Enrolled successfully. Welcome!','success');
-    const globalKey = 'onboarding_first_seen';
-    const flagKey = `onboarding_seen_${courseId}`;
-    const seenGlobal = localStorage.getItem(globalKey);
-    const seenCourse = localStorage.getItem(flagKey);
-    if (!seenGlobal || !seenCourse) {
-      setShowOnboarding(true);
-      if (!seenGlobal) localStorage.setItem(globalKey, '1');
-      if (!seenCourse) localStorage.setItem(flagKey, '1');
-    }
-  };
+  const teacherName: string = location?.state?.teacher || course?.ownerUserId || 'Instructor';
 
-  const getLessonStatus = (lesson: any) => {
-    if (lesson.completed) return { label: 'Completed', color: 'success' as const };
-    return { label: 'Not Started', color: 'default' as const };
-  };
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(t);
-  }, []);
+  // no-op helpers for now
 
   return (
     <Box>
@@ -140,7 +54,7 @@ const CourseDetailPage: React.FC = () => {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 8 }}>
-            {loading ? (
+            {isLoading ? (
               <Box>
                 <Box sx={{ height: 36, bgcolor: (t)=>t.palette.action.hover, borderRadius: 1, mb:2 }} />
                 <Box sx={{ height: 18, width: '70%', bgcolor: (t)=>t.palette.action.hover, borderRadius: 1, mb:1 }} />
@@ -149,53 +63,35 @@ const CourseDetailPage: React.FC = () => {
             ) : (
               <>
                 <Typography variant="h4" gutterBottom>
-                  {course.title}
+                  {course?.title}
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                  {course.description}
+                  {course?.description}
                 </Typography>
               </>
             )}
 
             <Box display="flex" alignItems="center" gap={2} sx={{ mb: 2 }}>
-              <Avatar src={course.teacher.avatar}>
-                {course.teacher.name.charAt(0)}
-              </Avatar>
+              <Avatar>{(teacherName || '?').charAt(0).toUpperCase()}</Avatar>
               <Box>
                 <Typography variant="subtitle1">
-                  {course.teacher.name}
+                  {teacherName}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {course.teacher.bio}
+                  Instructor
                 </Typography>
               </Box>
             </Box>
 
             <Box display="flex" gap={2} flexWrap="wrap">
-              <Chip icon={<People />} label={`${course.stats.enrolled} enrolled`} />
-              <Chip icon={<Star />} label={`${course.stats.rating} rating`} />
-              <Chip icon={<AccessTime />} label={course.stats.duration} />
-              <Chip label={course.stats.level} color="primary" />
-              <Chip label={course.stats.language} variant="outlined" />
+              <Chip icon={<AccessTime />} label={course?.createdAt ? new Date(course.createdAt).toLocaleDateString() : ''} />
+              <Chip label={course?.lang?.toUpperCase()} variant="outlined" />
+              <Chip label={course?.status} color={course?.status === 'PUBLISHED' ? 'success' : (course?.status === 'READY' ? 'primary' : 'default')} />
             </Box>
           </Grid>
 
           <Grid size={{ xs: 12, md: 4 }}>
             <Box textAlign="center">
-              {user?.role === 'student' && (
-                <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={<PlayArrow />}
-                  onClick={handleEnroll}
-                  disabled={enrolled}
-                  fullWidth
-                  sx={{ mb: 2 }}
-                >
-                  {enrolled ? 'Enrolled' : 'Enroll Now'}
-                </Button>
-              )}
-
               <Box sx={{
                 p: 2,
                 borderRadius: 2,
@@ -208,7 +104,7 @@ const CourseDetailPage: React.FC = () => {
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={enrolled ? 25 : 0}
+                  value={0}
                   sx={{
                     height: 8,
                     borderRadius: 4,
@@ -218,22 +114,19 @@ const CourseDetailPage: React.FC = () => {
                     }
                   }}
                 />
-                <Typography variant="body2" color="text.secondary">
-                  {enrolled ? '25% complete' : 'Not enrolled'}
-                </Typography>
+                <Typography variant="body2" color="text.secondary">Not started</Typography>
               </Box>
             </Box>
           </Grid>
         </Grid>
       </Paper>
-      <OnboardingDialog open={showOnboarding} onClose={() => setShowOnboarding(false)} />
 
       {/* Course Content */}
       <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
         Course Content
       </Typography>
 
-      {loading ? (
+      {isLoading ? (
         <>
           {Array.from({ length: 2 }).map((_, idx) => (
             <Card key={idx} sx={{ mb: 3 }}>
@@ -249,26 +142,26 @@ const CourseDetailPage: React.FC = () => {
             </Card>
           ))}
         </>
-      ) : (
-        course.modules.map((module) => (
-          <Card key={module.id} sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Module {module.order}: {module.title}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {module.description}
-              </Typography>
 
+      ) : (
+        (course?.modules || []).map((module, idx) => (
+          <Accordion key={module.id} defaultExpanded={idx === 0} sx={{ mb: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <Chip label={`Module ${module.position}`} size="small" color="primary" />
+                <Typography variant="subtitle1">{module.title}</Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
               <Box>
-                {module.lessons.map((lesson) => (
+                {(module.lessons || []).map((lesson) => (
                   <Box key={lesson.id} sx={{ mb: 2 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                       <Box display="flex" alignItems="center" gap={2}>
                         <Book color="action" />
                         <Box>
                           <Typography variant="subtitle2">
-                            Lesson {lesson.order}: {lesson.title}
+                            Lesson {lesson.position}: {lesson.title}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             {lesson.description}
@@ -276,37 +169,17 @@ const CourseDetailPage: React.FC = () => {
                         </Box>
                       </Box>
                       <Box display="flex" alignItems="center" gap={2}>
-                        <Chip
-                          label={getLessonStatus(lesson).label}
-                          color={getLessonStatus(lesson).color}
-                          size="small"
-                        />
-                        <Typography variant="body2" color="text.secondary">
-                          {lesson.duration}
-                        </Typography>
+                        <Button size="small" variant="outlined" startIcon={<PlayArrow />} disabled>
+                          Start
+                        </Button>
                       </Box>
                     </Box>
-
-                    {lesson.id !== module.lessons[module.lessons.length - 1].id && (
-                      <Divider sx={{ mt: 2 }} />
-                    )}
+                    <Divider />
                   </Box>
                 ))}
               </Box>
-
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  component={Link}
-                  to={`/learn/${courseId}/${module.lessons[0].id}`}
-                  variant="outlined"
-                  startIcon={<PlayArrow />}
-                  disabled={!enrolled}
-                >
-                  {enrolled ? 'Continue Module' : 'Enroll to Start'}
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
+            </AccordionDetails>
+          </Accordion>
         ))
       )}
 

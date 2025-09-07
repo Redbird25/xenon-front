@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Card,
   CardContent,
@@ -18,47 +18,34 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import Grid from '@mui/material/Grid';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '../../services/api';
 
 const CourseListPage: React.FC = () => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Mock course data
-  const courses = [
-    {
-      id: '1',
-      title: 'Introduction to Python Programming',
-      description: 'Learn the fundamentals of Python programming language',
-      teacher: 'Dr. Sarah Johnson',
-      status: 'published',
-      enrolled: 156,
-      rating: 4.8,
-      duration: '8 weeks',
-      level: 'Beginner',
-    },
-    {
-      id: '2',
-      title: 'Data Structures & Algorithms',
-      description: 'Master essential data structures and algorithms',
-      teacher: 'Prof. Michael Chen',
-      status: 'published',
-      enrolled: 89,
-      rating: 4.9,
-      duration: '12 weeks',
-      level: 'Intermediate',
-    },
-    {
-      id: '3',
-      title: 'Machine Learning Fundamentals',
-      description: 'Explore the world of machine learning and AI',
-      teacher: 'Dr. Emily Davis',
-      status: 'draft',
-      enrolled: 0,
+  const { data: myCourses, isLoading } = useQuery({
+    queryKey: ['student_my_courses'],
+    queryFn: () => api.getStudentMyCourses(),
+    enabled: !!user,
+    staleTime: 120000, // 2 minutes
+    refetchOnWindowFocus: false,
+  });
+
+  const courses = useMemo(() => {
+    return (myCourses || []).map((item) => ({
+      id: item.courseResponse.id,
+      title: item.courseResponse.title,
+      description: item.courseResponse.description,
+      status: item.courseResponse.status, // Backend uppercase
+      teacher: item.createdBy || item.courseResponse.ownerUserId || '',
+      enrolled: item.totalStudents,
       rating: 0,
-      duration: '10 weeks',
-      level: 'Advanced',
-    },
-  ];
+      duration: '',
+      level: '',
+    }));
+  }, [myCourses]);
 
   const filteredCourses = courses.filter(course =>
     course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -67,9 +54,11 @@ const CourseListPage: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'published': return 'success';
-      case 'draft': return 'warning';
-      case 'archived': return 'default';
+      case 'PUBLISHED': return 'success';
+      case 'READY': return 'primary';
+      case 'DRAFT': return 'warning';
+      case 'INGEST_FAILED': return 'error';
+      case 'ARCHIVED': return 'default';
       default: return 'default';
     }
   };
@@ -86,9 +75,7 @@ const CourseListPage: React.FC = () => {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-        <Typography variant="h4">
-          {user?.role === 'teacher' ? 'My Courses' : 'Available Courses'}
-        </Typography>
+        <Typography variant="h4">My Courses</Typography>
         {user?.role === 'teacher' && (
           <Button variant="contained" component={Link} to="/teacher/courses/create">
             Create New Course
@@ -167,23 +154,12 @@ const CourseListPage: React.FC = () => {
               </CardContent>
 
               <CardActions>
-                {user?.role === 'student' ? (
-                  <Button
-                    size="small"
-                    startIcon={<PlayArrow />}
-                    component={Link}
-                    to={`/courses/${course.id}`}
-                    disabled={course.status !== 'published'}
-                  >
-                    {course.status === 'published' ? 'Start Learning' : 'Coming Soon'}
+                {course.status === 'PUBLISHED' ? (
+                  <Button size="small" startIcon={<PlayArrow />} component={Link} to={`/courses/${course.id}`}>
+                    Start / Continue
                   </Button>
                 ) : (
-                  <Button
-                    size="small"
-                    startIcon={<Edit />}
-                    component={Link}
-                    to={`/teacher/courses/${course.id}/edit`}
-                  >
+                  <Button size="small" startIcon={<Edit />} component={Link} to={`/teacher/courses/${course.id}/edit`}>
                     Edit Course
                   </Button>
                 )}
@@ -193,7 +169,7 @@ const CourseListPage: React.FC = () => {
         ))}
       </Grid>
 
-      {filteredCourses.length === 0 && (
+      {(filteredCourses.length === 0 && !isLoading) && (
         <Box textAlign="center" sx={{ mt: 4 }}>
           <Typography variant="h6" color="text.secondary">
             No courses found matching your search.

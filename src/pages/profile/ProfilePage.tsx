@@ -1,21 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Avatar, Box, Button, Chip, Container, Paper, TextField, Typography, RadioGroup, Radio, FormControlLabel } from '@mui/material';
+import { Avatar, Box, Button, Chip, Container, Paper, Typography, RadioGroup, Radio, FormControlLabel, Skeleton } from '@mui/material';
 import Grid2 from '@mui/material/Grid';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { ArrowBack } from '@mui/icons-material';
 import { LinearProgress } from '@mui/material';
 import TagInput from '../../components/common/TagInput';
-import AvatarUpload from '../../components/profile/AvatarUpload';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../../services/api';
 
 const ProfilePage: React.FC = () => {
   const { user } = useAuth();
-  const [bio, setBio] = useState('');
   const [interests, setInterests] = useState<string[]>([]);
   const [hobbies, setHobbies] = useState<string[]>([]);
   const [format, setFormat] = useState<'video'|'text'|'mixed'>('mixed');
-  const [edit, setEdit] = useState(true);
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const [edit, setEdit] = useState(false);
   const [completedLessons, setCompletedLessons] = useState(0);
   const [streak, setStreak] = useState(0);
   const [progressPct, setProgressPct] = useState(0);
@@ -23,28 +22,28 @@ const ProfilePage: React.FC = () => {
   const isLearner = user?.role === 'student' || user?.role === 'self-learner';
   const { showToast } = useToast();
 
+  const qc = useQueryClient();
+
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ['student_profile'],
+    queryFn: async () => {
+      const p = await api.getStudentProfile();
+      return p;
+    },
+    enabled: !!isLearner,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
     if (!isLearner || !user?.id) return;
-    const key = `student_profile_${user.id}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      const s = JSON.parse(saved);
-      setBio(s.bio || '');
-      const ints = Array.isArray(s.interests) ? s.interests : (s.interests ? String(s.interests).split(',').map((t:string)=>t.trim()).filter(Boolean) : []);
-      const hobs = Array.isArray(s.hobbies) ? s.hobbies : (s.hobbies ? String(s.hobbies).split(',').map((t:string)=>t.trim()).filter(Boolean) : []);
-      setInterests(ints);
-      setHobbies(hobs);
+    if (profile) {
+      setInterests(Array.isArray(profile.interests) ? profile.interests : []);
+      setHobbies(Array.isArray(profile.hobbies) ? profile.hobbies : []);
+      setFormat((profile.learningStyle || 'MIXED').toLowerCase() as any);
     } else {
-      setBio(''); setInterests([]); setHobbies([]);
+      setInterests([]); setHobbies([]); setFormat('mixed');
     }
-    // preferences
-    const prefSaved = localStorage.getItem(`student_onboarding_${user.id}`);
-    if (prefSaved) {
-      const p = JSON.parse(prefSaved);
-      setFormat(p.format || 'mixed');
-    }
-    const av = localStorage.getItem(`user_avatar_${user.id}`);
-    setAvatar(av || null);
     // compute achievements from study events
     const eventsStr = localStorage.getItem(`study_events_${user.id}`);
     if (eventsStr) {
@@ -69,13 +68,39 @@ const ProfilePage: React.FC = () => {
     } else {
       setCompletedLessons(0); setStreak(0); setProgressPct(0);
     }
-  }, [user?.id, isLearner]);
+  }, [user?.id, isLearner, profile?.id]);
 
-  const save = () => {
-    if (!isLearner || !user?.id) return;
-    const key = `student_profile_${user.id}`;
-    localStorage.setItem(key, JSON.stringify({ bio, interests, hobbies }));
-    showToast('Profile saved', 'success');
+  // Detect unsaved changes relative to server profile
+  const hasUnsavedChanges = useMemo(() => {
+    const norm = (arr: string[]) => (arr || []).map((s)=>s.trim().toLowerCase()).filter(Boolean).sort();
+    const eqArr = (a: string[], b: string[]) => {
+      const aa = norm(a); const bb = norm(b);
+      if (aa.length !== bb.length) return false;
+      for (let i=0;i<aa.length;i++) if (aa[i] !== bb[i]) return false;
+      return true;
+    };
+    const origI = profile?.interests || [];
+    const origH = profile?.hobbies || [];
+    const origF = (profile?.learningStyle || 'MIXED').toLowerCase();
+    return !eqArr(interests, origI) || !eqArr(hobbies, origH) || format !== (origF as any);
+  }, [interests, hobbies, format, profile?.interests, profile?.hobbies, profile?.learningStyle]);
+
+  const save = async () => {
+    if (!isLearner) return;
+    const orig = profile;
+    const payload: any = {};
+    if (!orig || JSON.stringify(orig.interests||[]) !== JSON.stringify(interests)) payload.interests = interests;
+    if (!orig || JSON.stringify(orig.hobbies||[]) !== JSON.stringify(hobbies)) payload.hobbies = hobbies;
+    if (!orig || (orig.learningStyle || 'MIXED').toLowerCase() !== format) payload.learningStyle = (format || 'mixed').toUpperCase();
+    if (Object.keys(payload).length === 0) { showToast('Nothing to save', 'info'); setEdit(false); return; }
+    try {
+      await api.updateStudentProfile(payload);
+      showToast('Profile saved', 'success');
+      setEdit(false);
+      await qc.invalidateQueries({ queryKey: ['student_profile'] });
+    } catch (e) {
+      showToast('Failed to save profile', 'error');
+    }
   };
 
   return (
@@ -101,7 +126,9 @@ const ProfilePage: React.FC = () => {
         {/* Header */}
         <Box sx={{ px: 3, pb: 3 }}>
           <Box display="flex" alignItems="flex-end" gap={2} sx={{ mt: -6 }}>
-            <AvatarUpload size={96} value={avatar} onChange={(data)=>{ setAvatar(data); if (user?.id) { if (data) localStorage.setItem(`user_avatar_${user.id}`, data); else localStorage.removeItem(`user_avatar_${user.id}`); } }} />
+            <Avatar sx={{ width: 96, height: 96, fontSize: 36 }}>
+              {user?.name?.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase()}
+            </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="h5" fontWeight={800} noWrap>{user?.name}</Typography>
               <Typography variant="body2" color="text.secondary" noWrap>{user?.email}</Typography>
@@ -112,7 +139,15 @@ const ProfilePage: React.FC = () => {
               </Box>
             </Box>
             {isLearner && (
-              <Button size="small" variant="contained" onClick={()=>setEdit((e)=>!e)}>{edit?'View':'Edit'}</Button>
+              <Button
+                size="small"
+                variant="contained"
+                disabled={edit && hasUnsavedChanges}
+                title={edit && hasUnsavedChanges ? 'You have unsaved changes' : undefined}
+                onClick={()=>{ if (edit && hasUnsavedChanges) return; setEdit((e)=>!e); }}
+              >
+                {edit?'View':'Edit'}
+              </Button>
             )}
           </Box>
 
@@ -121,22 +156,39 @@ const ProfilePage: React.FC = () => {
             <Grid2 size={{ xs: 12, md: 8 }}>
               {isLearner ? (
                 <>
-                  <TextField disabled={!edit} fullWidth label="Bio" multiline rows={3} value={bio} onChange={(e)=>setBio(e.target.value)} sx={{ mb: 2 }} />
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-                    <TagInput label="Interests" value={interests} onChange={setInterests} suggestions={["AI","ML","Math","UX","Frontend","Backend","DevOps","Cloud","Data","Security","Python","TypeScript"]} />
+                    <Typography variant="subtitle1" gutterBottom>Interests</Typography>
+                    {edit ? (
+                      <TagInput label="Add interests" value={interests} onChange={setInterests} suggestions={["AI","ML","Math","UX","Frontend","Backend","DevOps","Cloud","Data","Security","Python","TypeScript"]} />
+                    ) : (
+                      <Box sx={{ display:'flex', flexWrap:'wrap', gap: 1 }}>
+                        {interests.length ? interests.map((t)=>(<Chip key={t} label={t} />)) : <Typography variant="body2" color="text.secondary">No interests</Typography>}
+                      </Box>
+                    )}
                   </Paper>
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                    <TagInput label="Hobbies" value={hobbies} onChange={setHobbies} suggestions={["Music","Reading","Gaming","Travel","Cooking","Cycling","Running","Photography","Chess","Movies"]} />
+                    <Typography variant="subtitle1" gutterBottom>Hobbies</Typography>
+                    {edit ? (
+                      <TagInput label="Add hobbies" value={hobbies} onChange={setHobbies} suggestions={["Music","Reading","Gaming","Travel","Cooking","Cycling","Running","Photography","Chess","Movies"]} />
+                    ) : (
+                      <Box sx={{ display:'flex', flexWrap:'wrap', gap: 1 }}>
+                        {hobbies.length ? hobbies.map((t)=>(<Chip key={t} label={t} />)) : <Typography variant="body2" color="text.secondary">No hobbies</Typography>}
+                      </Box>
+                    )}
                   </Paper>
                   <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>Learning preferences</Typography>
-                    <RadioGroup row value={format} onChange={(e)=>setFormat(e.target.value as any)}>
-                      <FormControlLabel value="video" control={<Radio />} label="Video" />
-                      <FormControlLabel value="text" control={<Radio />} label="Text" />
-                      <FormControlLabel value="mixed" control={<Radio />} label="Mixed" />
-                    </RadioGroup>
+                    <Typography variant="subtitle1" gutterBottom>Learning style</Typography>
+                    {edit ? (
+                      <RadioGroup row value={format} onChange={(e)=>setFormat(e.target.value as any)}>
+                        <FormControlLabel value="video" control={<Radio />} label="Video" />
+                        <FormControlLabel value="text" control={<Radio />} label="Text" />
+                        <FormControlLabel value="mixed" control={<Radio />} label="Mixed" />
+                      </RadioGroup>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">{format.toUpperCase()}</Typography>
+                    )}
                   </Box>
-                  <Button sx={{ mt: 1 }} variant="contained" onClick={() => { save(); if (user?.id) localStorage.setItem(`student_onboarding_${user.id}`, JSON.stringify({ format })); }}>Save</Button>
+                  {edit && <Button sx={{ mt: 1 }} variant="contained" onClick={save}>Save</Button>}
                 </>
               ) : (
                 <>
@@ -152,7 +204,7 @@ const ProfilePage: React.FC = () => {
                   <Typography variant="body2">Member since: {user ? new Date(user.createdAt).toLocaleDateString() : '—'}</Typography>
                   {isLearner && (
                     <>
-                      <Typography variant="body2" color="text.secondary">Format: {format}</Typography>
+                      <Typography variant="body2" color="text.secondary">Learning style: {format.toUpperCase()}</Typography>
                       <Typography variant="body2" color="text.secondary">Lessons done: {completedLessons}</Typography>
                       <Typography variant="body2" color="text.secondary">Streak: {streak} day(s)</Typography>
                     </>

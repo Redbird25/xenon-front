@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -20,6 +20,8 @@ import {
 } from '@mui/icons-material';
 import { Add, Delete } from '@mui/icons-material';
 import { useToast } from '../../contexts/ToastContext';
+import { useQuery } from '@tanstack/react-query';
+import api, { BackendCourse } from '../../services/api';
 
 const TeacherCourseEditPage: React.FC = () => {
   const { courseId } = useParams();
@@ -52,6 +54,62 @@ const TeacherCourseEditPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Fetch course details and poll while generating (DRAFT) up to 2 minutes
+  const startedAtRef = useRef<number | null>(null);
+  const { data: course, isLoading } = useQuery<BackendCourse>({
+    queryKey: ['course', courseId],
+    queryFn: () => api.getCourseById(courseId || ''),
+    enabled: !!courseId,
+    refetchInterval: (query) => {
+      if (!startedAtRef.current) startedAtRef.current = Date.now();
+      const elapsed = Date.now() - startedAtRef.current;
+      if (elapsed > 120000) return false;
+      const current = (query.state.data as BackendCourse | undefined)?.status;
+      // poll every 3s while generating or until first data arrives
+      if (!current) return 3000;
+      return current === 'DRAFT' ? 3000 : false;
+    },
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!course) return;
+    setCourseData((prev) => ({
+      ...prev,
+      title: course.title,
+      description: course.description,
+      status: (course.status || 'DRAFT').toLowerCase(),
+      modules: (course.modules || []).map((m) => ({
+        id: m.id,
+        title: m.title,
+        description: '',
+        order: m.position,
+        lessons: (m.lessons || []).map((l) => ({
+          id: l.id,
+          title: l.title,
+          description: l.description || '',
+          order: l.position,
+          minMastery: l.minMastery ?? 0.6,
+        })),
+      })),
+    }));
+  }, [course?.id, course?.status]);
+
+  // Notify when generation completes or fails
+  const lastStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const cur = course?.status;
+    const prev = lastStatusRef.current;
+    if (cur && prev && prev === 'DRAFT' && cur === 'READY') {
+      showToast('Course content is ready', 'success');
+    }
+    if (cur && prev && prev === 'DRAFT' && cur === 'INGEST_FAILED') {
+      showToast('Failed to generate course content', 'error');
+    }
+    if (cur) lastStatusRef.current = cur;
+  }, [course?.status]);
 
   const handleSave = async () => {
     setError('');
@@ -155,7 +213,7 @@ const TeacherCourseEditPage: React.FC = () => {
             variant="contained"
             startIcon={<Save />}
             onClick={handleSave}
-            disabled={isSubmitting}
+            disabled={isSubmitting || course?.status === 'PUBLISHED'}
           >
             {isSubmitting ? 'Saving...' : 'Save Changes'}
           </Button>
@@ -189,6 +247,7 @@ const TeacherCourseEditPage: React.FC = () => {
                   label="Course Title"
                   value={courseData.title}
                   onChange={(e) => setCourseData(prev => ({ ...prev, title: e.target.value }))}
+                  disabled={course?.status === 'PUBLISHED'}
                 />
               </Grid>
 
@@ -200,6 +259,7 @@ const TeacherCourseEditPage: React.FC = () => {
                   onChange={(e) => setCourseData(prev => ({ ...prev, description: e.target.value }))}
                   multiline
                   rows={3}
+                  disabled={course?.status === 'PUBLISHED'}
                 />
               </Grid>
 
@@ -213,6 +273,7 @@ const TeacherCourseEditPage: React.FC = () => {
                   SelectProps={{
                     native: true,
                   }}
+                  disabled={false}
                 >
                   <option value="draft">Draft</option>
                   <option value="ready">Ready</option>
@@ -229,6 +290,18 @@ const TeacherCourseEditPage: React.FC = () => {
               Course Structure
             </Typography>
 
+            {(courseData.modules.length === 0 && (course?.status === 'DRAFT')) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Generating course modules and lessons… Please wait a bit. We’ll refresh automatically.
+              </Alert>
+            )}
+
+            {(course?.status === 'INGEST_FAILED') && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                Generation failed. Please review your sources and try again.
+              </Alert>
+            )}
+
             {courseData.modules.map((module, moduleIndex) => (
               <Accordion key={module.id} sx={{ mb: 2 }}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
@@ -236,8 +309,8 @@ const TeacherCourseEditPage: React.FC = () => {
                     <Chip label={`Module ${module.order}`} color="primary" size="small" />
                     <Typography variant="subtitle1">{module.title}</Typography>
                     <Box ml="auto" display="flex" gap={1}>
-                      <Button size="small" variant="outlined" startIcon={<Add />} onClick={(e) => { e.stopPropagation(); addLesson(moduleIndex); }}>Add Lesson</Button>
-                      <Button size="small" color="error" variant="outlined" startIcon={<Delete />} onClick={(e) => { e.stopPropagation(); removeModule(moduleIndex); }}>Remove Module</Button>
+                      <Button size="small" variant="outlined" startIcon={<Add />} onClick={(e) => { e.stopPropagation(); addLesson(moduleIndex); }} disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}>Add Lesson</Button>
+                      <Button size="small" color="error" variant="outlined" startIcon={<Delete />} onClick={(e) => { e.stopPropagation(); removeModule(moduleIndex); }} disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}>Remove Module</Button>
                     </Box>
                   </Box>
                 </AccordionSummary>
@@ -253,6 +326,7 @@ const TeacherCourseEditPage: React.FC = () => {
                           newModules[moduleIndex].title = e.target.value;
                           setCourseData(prev => ({ ...prev, modules: newModules }));
                         }}
+                        disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}
                       />
                     </Grid>
 
@@ -268,6 +342,7 @@ const TeacherCourseEditPage: React.FC = () => {
                         }}
                         multiline
                         rows={2}
+                        disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}
                       />
                     </Grid>
 
@@ -298,6 +373,7 @@ const TeacherCourseEditPage: React.FC = () => {
                                   newModules[moduleIndex].lessons[lessonIndex].title = e.target.value;
                                   setCourseData(prev => ({ ...prev, modules: newModules }));
                                 }}
+                                disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}
                               />
                             </Grid>
 
@@ -313,6 +389,7 @@ const TeacherCourseEditPage: React.FC = () => {
                                   setCourseData(prev => ({ ...prev, modules: newModules }));
                                 }}
                                 inputProps={{ min: 0, max: 1, step: 0.05 }}
+                                disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}
                               />
                             </Grid>
 
@@ -328,11 +405,12 @@ const TeacherCourseEditPage: React.FC = () => {
                                 }}
                                 multiline
                                 rows={2}
+                                disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}
                               />
                             </Grid>
                             <Grid size={12}>
                               <Box display="flex" justifyContent="flex-end">
-                                <Button size="small" color="error" startIcon={<Delete />} onClick={() => removeLesson(moduleIndex, lessonIndex)}>
+                                <Button size="small" color="error" startIcon={<Delete />} onClick={() => removeLesson(moduleIndex, lessonIndex)} disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}>
                                   Remove Lesson
                                 </Button>
                               </Box>
@@ -341,7 +419,7 @@ const TeacherCourseEditPage: React.FC = () => {
                         </Paper>
                       ))}
                       <Box display="flex" justifyContent="flex-end">
-                        <Button size="small" variant="outlined" startIcon={<Add />} onClick={() => addLesson(moduleIndex)}>
+                        <Button size="small" variant="outlined" startIcon={<Add />} onClick={() => addLesson(moduleIndex)} disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}>
                           Add Lesson
                         </Button>
                       </Box>
@@ -351,7 +429,7 @@ const TeacherCourseEditPage: React.FC = () => {
               </Accordion>
             ))}
             <Box display="flex" justifyContent="flex-end">
-              <Button variant="contained" startIcon={<Add />} onClick={addModule}>
+              <Button variant="contained" startIcon={<Add />} onClick={addModule} disabled={course?.status === 'PUBLISHED' || course?.status === 'DRAFT'}>
                 Add Module
               </Button>
             </Box>
@@ -387,11 +465,12 @@ const TeacherCourseEditPage: React.FC = () => {
                 Average Mastery Required
               </Typography>
               <Typography variant="h4">
-                {Math.round(
-                  courseData.modules.reduce((total, module) =>
-                    total + module.lessons.reduce((sum, lesson) => sum + lesson.minMastery, 0), 0
-                  ) / courseData.modules.reduce((total, module) => total + module.lessons.length, 0) * 100
-                )}%
+                {(() => {
+                  const totalLessons = courseData.modules.reduce((total, module) => total + module.lessons.length, 0);
+                  if (totalLessons === 0) return 0;
+                  const sum = courseData.modules.reduce((total, module) => total + module.lessons.reduce((s, l) => s + (Number(l.minMastery) || 0), 0), 0);
+                  return Math.round((sum / totalLessons) * 100);
+                })()}%
               </Typography>
             </Box>
           </Paper>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -9,6 +9,8 @@ import {
   Chip,
   IconButton,
   Alert,
+  Collapse,
+  Stack,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -18,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
+import { useToast } from '../../contexts/ToastContext';
 
 const TeacherCourseCreatePage: React.FC = () => {
   const navigate = useNavigate();
@@ -25,13 +28,15 @@ const TeacherCourseCreatePage: React.FC = () => {
   const [courseData, setCourseData] = useState({
     title: '',
     description: '',
-    resources: [''],
+    resources: [] as string[],
     lang: 'en',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { showToast } = useToast();
+  const [showResources, setShowResources] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     setCourseData(prev => ({
@@ -54,6 +59,7 @@ const TeacherCourseCreatePage: React.FC = () => {
       ...prev,
       resources: [...prev.resources, '']
     }));
+    setShowResources(true);
   };
 
   const removeResource = (index: number) => {
@@ -66,6 +72,17 @@ const TeacherCourseCreatePage: React.FC = () => {
     }
   };
 
+  const isHttpsUrl = (s: string) => {
+    try { const u = new URL(s); return u.protocol === 'https:'; } catch { return false; }
+  };
+
+  const cleanedSources = useMemo(() =>
+    courseData.resources.map(s => s.trim()).filter(Boolean),
+    [courseData.resources]
+  );
+
+  const validHttpsSources = useMemo(() => cleanedSources.filter(isHttpsUrl), [cleanedSources]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
@@ -73,37 +90,31 @@ const TeacherCourseCreatePage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // Filter out empty resources
-      const filteredResources = courseData.resources.filter(url => url.trim() !== '');
-
       if (!courseData.title.trim()) {
         throw new Error('Course title is required');
       }
-
-      if (filteredResources.length === 0) {
-        throw new Error('At least one resource URL is required');
-      }
-
-      const requestData = {
-        course_id: `course_${Date.now()}`, // Generate temporary ID
+      const payload = {
         title: courseData.title.trim(),
-        description: courseData.description.trim() || undefined,
-        resources: filteredResources,
+        description: courseData.description.trim(),
         lang: courseData.lang,
       };
 
-      // Call the AI ingest service
-      const response = await apiService.ingestResources(requestData);
+      let resp;
+      if (validHttpsSources.length === 0) {
+        resp = await apiService.createCourse(payload);
+      } else {
+        resp = await apiService.createCourseWithUri({ ...payload, sourceUris: validHttpsSources });
+      }
 
-      setSuccess(`Course created successfully! Job ID: ${response.job_id}`);
-
-      // Navigate back to courses list after a delay
-      setTimeout(() => {
-        navigate('/courses');
-      }, 2000);
+      setSuccess(`Course created. Status: ${resp.status}`);
+      showToast('Course created. Opening editor…', 'success');
+      // Warm up cache (best-effort)
+      try { await apiService.getCourseById(resp.courseId); } catch {}
+      navigate(`/teacher/courses/${resp.courseId}/edit`);
 
     } catch (err: any) {
       setError(err.message || 'Failed to create course');
+      showToast(err.message || 'Failed to create course', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -116,7 +127,7 @@ const TeacherCourseCreatePage: React.FC = () => {
       </Typography>
 
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Set up your course with learning resources. Our AI will process them and create a structured learning path.
+        You can start with just a title and description. Add sources later if needed.
       </Typography>
 
       <Paper sx={{ p: 3 }}>
@@ -146,42 +157,37 @@ const TeacherCourseCreatePage: React.FC = () => {
             </Grid>
 
             <Grid size={12}>
-              <Typography variant="h6" gutterBottom>
-                Learning Resources
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Add URLs to tutorials, documentation, videos, or other learning materials.
-                Our AI will analyze and structure these into lessons.
-              </Typography>
-
-              {courseData.resources.map((resource, index) => (
-                <Box key={index} display="flex" alignItems="center" sx={{ mb: 2 }}>
-                  <TextField
-                    fullWidth
-                    label={`Resource ${index + 1}`}
-                    value={resource}
-                    onChange={(e) => handleResourceChange(index, e.target.value)}
-                    placeholder="https://example.com/tutorial"
-                    type="url"
-                  />
-                  <IconButton
-                    onClick={() => removeResource(index)}
-                    disabled={courseData.resources.length === 1}
-                    sx={{ ml: 1 }}
-                  >
-                    <Delete />
-                  </IconButton>
-                </Box>
-              ))}
-
-              <Button
-                startIcon={<Add />}
-                onClick={addResource}
-                variant="outlined"
-                size="small"
-              >
-                Add Another Resource
-              </Button>
+              <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
+                <Typography variant="h6">Sources (optional)</Typography>
+                {!showResources && (
+                  <Button size="small" variant="outlined" startIcon={<Add />} onClick={() => setShowResources(true)}>Add sources</Button>
+                )}
+              </Stack>
+              <Collapse in={showResources}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Add https:// links. If left empty, the course will be created without sources.
+                </Typography>
+                {courseData.resources.map((resource, index) => (
+                  <Box key={index} display="flex" alignItems="center" sx={{ mb: 2 }}>
+                    <TextField
+                      fullWidth
+                      label={`Source ${index + 1}`}
+                      value={resource}
+                      onChange={(e) => handleResourceChange(index, e.target.value)}
+                      placeholder="https://example.com/tutorial"
+                      type="url"
+                      error={Boolean(resource) && !isHttpsUrl(resource)}
+                      helperText={Boolean(resource) && !isHttpsUrl(resource) ? 'Only https links are allowed' : ' '}
+                    />
+                    <IconButton onClick={() => removeResource(index)} sx={{ ml: 1 }}>
+                      <Delete />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Button startIcon={<Add />} onClick={addResource} variant="outlined" size="small">
+                  Add another source
+                </Button>
+              </Collapse>
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -196,10 +202,8 @@ const TeacherCourseCreatePage: React.FC = () => {
                 }}
               >
                 <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
                 <option value="ru">Russian</option>
+                <option value="uz">Uzbek</option>
               </TextField>
             </Grid>
 

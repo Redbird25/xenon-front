@@ -1,4 +1,56 @@
 import axios, { AxiosInstance } from 'axios';
+import type { StudentProfileDTO, LearningStyle } from '../types';
+
+// Minimal backend course types for new API
+export interface BackendLesson {
+  id: string;
+  title: string;
+  description: string;
+  position: number;
+  minMastery: number;
+}
+
+export interface BackendModule {
+  id: string;
+  title: string;
+  position: number;
+  lessons: BackendLesson[];
+}
+
+export interface BackendSource {
+  id: string;
+  kind: string;
+  uri: string;
+}
+
+export type BackendCourseStatus = 'DRAFT' | 'READY' | 'INGEST_FAILED' | 'PUBLISHED' | 'ARCHIVED';
+
+export interface BackendCourse {
+  id: string;
+  tenantId: string;
+  ownerUserId: string;
+  title: string;
+  description: string;
+  lang: string;
+  status: BackendCourseStatus;
+  createdAt: string;
+  modules?: BackendModule[];
+  sources?: BackendSource[];
+}
+
+export interface CreateCourseResponse { courseId: string; status: BackendCourseStatus }
+
+export interface StudentMyCourseItem {
+  id: string;
+  tenantId: string;
+  studentId: string;
+  courseResponse: BackendCourse;
+  createdBy: string;
+  createdAt: string;
+  status: string;
+  scope: string;
+  totalStudents: number;
+}
 import {
   IngestRequest,
   IngestResponse,
@@ -13,8 +65,11 @@ class ApiService {
   private api: AxiosInstance;
 
   constructor() {
+    const baseURL = (import.meta as any).env?.DEV
+      ? ''
+      : ((import.meta as any).env?.VITE_API_BASE_URL || 'http://75.119.145.146:8899');
     this.api = axios.create({
-      baseURL: (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000',
+      baseURL,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -24,10 +79,9 @@ class ApiService {
     // Request interceptor for auth
     this.api.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
+        // Prefer new keys; support legacy for dev
+        const token = localStorage.getItem('access_token') || localStorage.getItem('authToken');
+        if (token) config.headers.Authorization = `Bearer ${token}`;
         return config;
       },
       (error) => Promise.reject(error)
@@ -40,11 +94,85 @@ class ApiService {
         if (error.response?.status === 401) {
           // Handle unauthorized
           localStorage.removeItem('authToken');
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('auth_user');
+          localStorage.removeItem('auth_userinfo');
           window.location.href = '/login';
         }
         return Promise.reject(error);
       }
     );
+  }
+
+  // AUTH endpoints
+  async registerSelfLearner(payload: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    confirmPassword: string;
+  }): Promise<string> {
+    const res = await this.api.post('/auth/register', payload, {
+      headers: { 'Content-Type': 'application/json' },
+      responseType: 'text',
+      transformResponse: [(data) => data],
+    });
+    return String(res.data);
+  }
+
+  async login(payload: { email: string; password: string }): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    refresh_expires_in: number;
+    token_type: string;
+  }> {
+    const res = await this.api.post('/auth/token', payload);
+    return res.data;
+  }
+
+  async fetchUserInfo(accessToken: string): Promise<any> {
+    const res = await this.api.get('/auth/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return res.data;
+  }
+
+  // Student onboarding/profile
+  async postStudentOnboarding(payload: { interests: string[]; hobbies: string[]; learningStyle: LearningStyle }): Promise<StudentProfileDTO> {
+    const res = await this.api.post<StudentProfileDTO>('/student/onboarding', payload);
+    return res.data;
+  }
+
+  // Courses — creation
+  async createCourse(payload: { title: string; description: string; lang: string }): Promise<CreateCourseResponse> {
+    const res = await this.api.post<CreateCourseResponse>('/api/course/create', payload);
+    return res.data;
+  }
+
+  async createCourseWithUri(payload: { title: string; description: string; lang: string; sourceUris: string[] }): Promise<CreateCourseResponse> {
+    const res = await this.api.post<CreateCourseResponse>('/api/course/create-with-uri', payload);
+    return res.data;
+  }
+
+  async getCourseById(courseId: string): Promise<BackendCourse> {
+    const res = await this.api.get<BackendCourse>(`/api/course/get`, { params: { courseId } });
+    return res.data;
+  }
+
+  async getStudentMyCourses(): Promise<StudentMyCourseItem[]> {
+    const res = await this.api.get<StudentMyCourseItem[]>(`/student/my-courses`);
+    return res.data;
+  }
+
+  async getStudentProfile(): Promise<StudentProfileDTO> {
+    const res = await this.api.get<StudentProfileDTO>('/student/profile');
+    return res.data;
+  }
+
+  async updateStudentProfile(payload: Partial<Pick<StudentProfileDTO, 'interests' | 'hobbies' | 'learningStyle'>>): Promise<void> {
+    await this.api.put('/student/profile', payload);
   }
 
   // AI Service endpoints
@@ -76,7 +204,7 @@ class ApiService {
     return response.data;
   }
 
-  async createCourse(course: Partial<Course>): Promise<Course> {
+  async createCourseLegacy(course: Partial<Course>): Promise<Course> {
     const response = await this.api.post<Course>('/courses', course);
     return response.data;
   }

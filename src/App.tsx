@@ -35,6 +35,7 @@ const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'));
 import { AnimatePresence, motion } from 'framer-motion';
 import PageLoader from './components/common/PageLoader';
 import RouteProgressBar from './components/common/RouteProgressBar';
+import OnboardingGate from './components/onboarding/OnboardingGate';
 
 // Query client for React Query
 const queryClient = new QueryClient({
@@ -188,6 +189,7 @@ const AppShell: React.FC = () => {
         <ToastProvider>
         <Router>
           <RouteProgressBar />
+          <OnboardingGate />
           <AnimatedRoutes />
         </Router>
         </ToastProvider>

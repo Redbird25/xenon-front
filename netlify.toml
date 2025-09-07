@@ -21,6 +21,31 @@
   to = "/index.html"
   status = 200
 
+# Proxy API to backend in production (Netlify)
+[[redirects]]
+  from = "/auth/*"
+  to = "http://75.119.145.146:8899/auth/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/ai/*"
+  to = "http://75.119.145.146:8899/ai/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/student/*"
+  to = "http://75.119.145.146:8899/student/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "http://75.119.145.146:8899/api/:splat"
+  status = 200
+  force = true
+
 ## Long-term cache for hashed assets
 [[headers]]
   for = "/assets/*"

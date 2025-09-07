@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container,
@@ -22,6 +22,19 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+
+  // Prefill from sessionStorage after registration
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('prefill_login');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data?.email) setEmail(data.email);
+        if (data?.password) setPassword(data.password);
+        sessionStorage.removeItem('prefill_login');
+      }
+    } catch {}
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

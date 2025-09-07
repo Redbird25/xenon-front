@@ -15,24 +15,9 @@ import {
   People,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import WelcomeOnboarding from '../../components/onboarding/WelcomeOnboarding';
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [initialData, setInitialData] = useState<any>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    if (user.role !== 'student' && user.role !== 'self-learner') return;
-    const keySeen = `welcome_onboarding_seen_${user.id}`;
-    const seen = localStorage.getItem(keySeen);
-    if (!seen) {
-      const saved = localStorage.getItem(`student_onboarding_${user.id}`);
-      setInitialData(saved ? JSON.parse(saved) : undefined);
-      setShowOnboarding(true);
-    }
-  }, [user?.id]);
 
   const stats = [
     {
@@ -87,25 +72,7 @@ const DashboardPage: React.FC = () => {
 
   return (
     <Box>
-      {showOnboarding && (
-        <WelcomeOnboarding
-          open={showOnboarding}
-          initial={initialData || undefined}
-          onCancel={() => { setShowOnboarding(false); localStorage.setItem(`welcome_onboarding_seen_${user?.id}`, '1'); }}
-          onFinish={(data) => {
-            if (user?.id) {
-              localStorage.setItem(`student_onboarding_${user.id}`, JSON.stringify({
-                interests: data.interests,
-                hobbies: data.hobbies,
-                format: data.format,
-                optInReminders: data.reminders,
-              }));
-              localStorage.setItem(`welcome_onboarding_seen_${user.id}`, '1');
-            }
-            setShowOnboarding(false);
-          }}
-        />
-      )}
+      {/* Onboarding is enforced globally via OnboardingGate */}
       <Typography variant="h4" gutterBottom>
         Welcome back, {user?.name}!
       </Typography>

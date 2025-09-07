@@ -6,6 +6,29 @@ export default defineConfig({
   server: {
     port: 3000,
     open: false,
+    proxy: {
+      // Proxy API calls in dev to avoid CORS
+      '/auth': {
+        target: 'http://75.119.145.146:8899',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/ai': {
+        target: 'http://75.119.145.146:8899',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/api': {
+        target: 'http://75.119.145.146:8899',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/student': {
+        target: 'http://75.119.145.146:8899',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   preview: {
     port: 4173,

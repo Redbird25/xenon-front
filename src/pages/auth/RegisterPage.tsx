@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navigate, Link as RouterLink } from 'react-router-dom';
+import { Navigate, Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -18,7 +18,9 @@ import { useToast } from '../../contexts/ToastContext';
 const RegisterPage: React.FC = () => {
   const { register, isAuthenticated, isLoading } = useAuth();
   const { showToast } = useToast();
-  const [name, setName] = useState('');
+  const navigate = useNavigate();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,13 +28,18 @@ const RegisterPage: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
-    if (!name || !email || !password) {
+    if (!firstName || !lastName || !email || !password) {
       setError('Please fill in all fields');
       return;
     }
     try {
-      await register(name, email, password);
-      showToast('Registration successful. Welcome!', 'success');
+      await register(firstName, lastName, email, password);
+      // Save prefill data for login and redirect
+      try {
+        sessionStorage.setItem('prefill_login', JSON.stringify({ email, password }));
+      } catch {}
+      showToast('Registration successful. Please sign in.', 'success');
+      navigate('/login');
     } catch (err) {
       setError('Registration failed.');
     }
@@ -51,7 +58,8 @@ const RegisterPage: React.FC = () => {
           </Avatar>
           <Typography component="h1" variant="h5">Create your account</Typography>
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
-            <TextField margin="normal" required fullWidth label="Full Name" value={name} onChange={(e) => setName(e.target.value)} />
+            <TextField margin="normal" required fullWidth label="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            <TextField margin="normal" required fullWidth label="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
             <TextField margin="normal" required fullWidth label="Email Address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <TextField margin="normal" required fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             {error && (<Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>)}
