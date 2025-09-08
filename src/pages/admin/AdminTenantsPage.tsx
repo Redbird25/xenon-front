@@ -23,7 +23,7 @@ const AdminTenantsPage: React.FC = () => {
   return (
     <Container sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>Tenants</Typography>
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, md: 3 }}>
         <Grid size={{ xs: 12, md: 5 }}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>Add Tenant</Typography>

@@ -24,7 +24,7 @@ const PricingPage: React.FC = () => {
         Build and sell courses with AI assistance. Cancel anytime.
       </Typography>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, md: 3 }}>
         {plans.map((p, i) => (
           <Grid key={p.name} size={{ xs: 12, md: 4 }}>
             <MotionCard initial={{opacity:0, y: 12}} whileInView={{opacity:1, y:0}} viewport={{ once: true }}

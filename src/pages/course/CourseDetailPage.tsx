@@ -52,7 +52,7 @@ const CourseDetailPage: React.FC = () => {
     <Box>
       {/* Course Header */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, md: 3 }}>
           <Grid size={{ xs: 12, md: 8 }}>
             {isLoading ? (
               <Box>
@@ -186,7 +186,7 @@ const CourseDetailPage: React.FC = () => {
       )}
 
       {/* Course Stats */}
-      <Grid container spacing={3} sx={{ mt: 2 }}>
+      <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mt: 2 }}>
         <Grid size={{ xs: 12, md: 4 }}>
           <Card>
             <CardContent>

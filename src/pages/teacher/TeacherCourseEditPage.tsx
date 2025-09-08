@@ -231,11 +231,17 @@ const TeacherCourseEditPage: React.FC = () => {
     });
   };
 
-  const handleDeleteCourse = () => {
-    const confirmed = window.confirm('Delete this course? This action cannot be undone.');
+  const handleDeleteCourse = async () => {
+    if (!courseId) return;
+    const confirmed = window.confirm('Delete this course? This action will mark it as deleted.');
     if (!confirmed) return;
-    showToast('Course deleted', 'success');
-    navigate('/courses');
+    try {
+      await api.deleteCourseSoft(courseId);
+      showToast('Course deleted', 'success');
+      navigate('/courses');
+    } catch (e) {
+      showToast('Failed to delete course', 'error');
+    }
   };
 
   return (
@@ -281,7 +287,7 @@ const TeacherCourseEditPage: React.FC = () => {
         </Alert>
       )}
 
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, md: 3 }}>
         <Grid size={{ xs: 12, md: 8 }}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>

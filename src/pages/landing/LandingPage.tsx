@@ -76,7 +76,7 @@ const LandingPage: React.FC = () => {
 
       {/* Features */}
       <Container maxWidth="lg" sx={{ mt: 10 }}>
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, md: 3 }}>
           <Grid size={{ xs: 12, md: 4 }}><FeatureCard icon={<AutoAwesome />} title="AI‑Powered" desc="Smart ingestion, semantic search, and adaptive quizzing for mastery." /></Grid>
           <Grid size={{ xs: 12, md: 4 }}><FeatureCard icon={<FlashOn />} title="Lightning Fast" desc="Built with Vite + React Query for instant, cached experiences." /></Grid>
           <Grid size={{ xs: 12, md: 4 }}><FeatureCard icon={<Shield />} title="Enterprise Ready" desc="Role-based access, progress tracking, and robust API integration." /></Grid>

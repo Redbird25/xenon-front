@@ -132,7 +132,7 @@ const TeacherCourseCreatePage: React.FC = () => {
 
       <Paper sx={{ p: 3 }}>
         <form onSubmit={handleSubmit}>
-          <Grid container spacing={3}>
+          <Grid container spacing={{ xs: 2, md: 3 }}>
             <Grid size={12}>
               <TextField
                 fullWidth

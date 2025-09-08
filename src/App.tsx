@@ -31,11 +31,12 @@ const AdminSelfLearnersPage = React.lazy(() => import('./pages/admin/AdminSelfLe
 const TenantUsersPage = React.lazy(() => import('./pages/manager/TenantUsersPage'));
 const StudentOnboardingPage = React.lazy(() => import('./pages/student/StudentOnboardingPage'));
 const StudentProfilePage = React.lazy(() => import('./pages/student/StudentProfilePage'));
-const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'));
 import { AnimatePresence, motion } from 'framer-motion';
 import PageLoader from './components/common/PageLoader';
 import RouteProgressBar from './components/common/RouteProgressBar';
 import OnboardingGate from './components/onboarding/OnboardingGate';
+import { ProfileModalProvider, useProfileModal } from './contexts/ProfileModalContext';
+import ProfileModal from './components/profile/ProfileModal';
 
 // Query client for React Query
 const queryClient = new QueryClient({
@@ -97,7 +98,6 @@ const AppShell: React.FC = () => {
             <Route path="/faq" element={<motion.div key="faq" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}><FAQPage /></motion.div>} />
             <Route path="/student/onboarding" element={<motion.div key="onboarding" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}><StudentOnboardingPage /></motion.div>} />
             <Route path="/student/profile" element={<motion.div key="sprofile" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}><StudentProfilePage /></motion.div>} />
-            <Route path="/profile" element={<motion.div key="profile" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}><ProfilePage /></motion.div>} />
 
             {/* Protected routes */}
             <Route
@@ -187,11 +187,14 @@ const AppShell: React.FC = () => {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <ToastProvider>
-        <Router>
-          <RouteProgressBar />
-          <OnboardingGate />
-          <AnimatedRoutes />
-        </Router>
+        <ProfileModalProvider>
+          <Router>
+            <RouteProgressBar />
+            <OnboardingGate />
+            <ProfileModalHost />
+            <AnimatedRoutes />
+          </Router>
+        </ProfileModalProvider>
         </ToastProvider>
       </ThemeProvider>
     </ThemeModeProvider>
@@ -209,3 +212,8 @@ function App() {
 }
 
 export default App;
+
+const ProfileModalHost: React.FC = () => {
+  const { open, closeProfile } = useProfileModal();
+  return <ProfileModal open={open} onClose={closeProfile} />;
+};

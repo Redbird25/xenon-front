@@ -18,6 +18,8 @@ import {
   MenuItem,
   Tooltip,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import {
   Menu as MenuIcon,
   Dashboard,
@@ -30,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProfileModal } from '../../contexts/ProfileModalContext';
 
 const drawerWidth = 240;
 const miniWidth = 72;
@@ -37,9 +40,12 @@ const miniWidth = 72;
 interface LayoutProps { onToggleMode?: () => void; mode?: 'light' | 'dark' }
 const Layout: React.FC<LayoutProps> = ({ onToggleMode, mode = 'dark' }) => {
   const { user, logout } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const { openProfile } = useProfileModal();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -104,6 +110,7 @@ const Layout: React.FC<LayoutProps> = ({ onToggleMode, mode = 'dark' }) => {
     user && item.roles.includes(user.role)
   );
 
+  const expanded = sidebarOpen || isMobile; // On mobile always show labels
   const drawer = (
     <div>
       <Toolbar>
@@ -118,27 +125,27 @@ const Layout: React.FC<LayoutProps> = ({ onToggleMode, mode = 'dark' }) => {
             fontWeight: 800,
           }}
         >
-          {sidebarOpen ? 'Xenon AI' : 'X'}
+          {expanded ? 'Xenon AI' : 'X'}
         </Typography>
       </Toolbar>
       <Divider />
       <List>
         {filteredMenuItems.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
-            <Tooltip title={!sidebarOpen ? item.text : ''} placement="right">
+            <Tooltip title={!expanded ? item.text : ''} placement="right">
               <ListItemButton
                 component={Link}
                 to={item.path}
                 sx={{
                   minHeight: 48,
-                  justifyContent: sidebarOpen ? 'initial' : 'center',
+                  justifyContent: expanded ? 'initial' : 'center',
                   px: 2.5,
                 }}
               >
-                <ListItemIcon sx={{ minWidth: 0, mr: sidebarOpen ? 2 : 'auto', justifyContent: 'center' }}>
+                <ListItemIcon sx={{ minWidth: 0, mr: expanded ? 2 : 'auto', justifyContent: 'center' }}>
                   {item.icon}
                 </ListItemIcon>
-                {sidebarOpen && <ListItemText primary={item.text} />}
+                {expanded && <ListItemText primary={item.text} />}
               </ListItemButton>
             </Tooltip>
           </ListItem>
@@ -212,7 +219,7 @@ const Layout: React.FC<LayoutProps> = ({ onToggleMode, mode = 'dark' }) => {
         open={Boolean(anchorEl)}
         onClose={handleProfileMenuClose}
       >
-        <MenuItem onClick={() => { handleProfileMenuClose(); window.location.href = '/profile'; }}>
+        <MenuItem onClick={() => { handleProfileMenuClose(); openProfile(); }}>
           <ListItemIcon>
             <AccountCircle fontSize="small" />
           </ListItemIcon>
@@ -272,12 +279,15 @@ const Layout: React.FC<LayoutProps> = ({ onToggleMode, mode = 'dark' }) => {
       {/* Main Content */}
       <Box component="main" sx={{
         flexGrow: 1,
-        p: 3,
+        px: { xs: 1.5, sm: 2, md: 3 },
+        py: { xs: 2, md: 3 },
         width: { sm: `calc(100% - ${(sidebarOpen ? drawerWidth : miniWidth)}px)` },
         minHeight: '100vh',
         background: (theme) => theme.palette.mode === 'dark'
           ? 'radial-gradient(1200px 600px at 10% -20%, rgba(124,58,237,.25), transparent), radial-gradient(1000px 500px at 110% 10%, rgba(0,229,255,.15), transparent)'
-          : 'radial-gradient(1200px 600px at 10% -20%, rgba(124,58,237,.10), transparent), radial-gradient(1000px 500px at 110% 10%, rgba(0,229,255,.10), transparent)'
+          : 'radial-gradient(1200px 600px at 10% -20%, rgba(124,58,237,.10), transparent), radial-gradient(1000px 500px at 110% 10%, rgba(0,229,255,.10), transparent)',
+        maxWidth: 1440,
+        mx: 'auto',
       }}>
         <Toolbar />
         <Outlet />

@@ -6,6 +6,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { ArrowBack } from '@mui/icons-material';
 import { LinearProgress } from '@mui/material';
 import TagInput from '../../components/common/TagInput';
+import LearningStyleBadge from '../../components/common/LearningStyleBadge';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 
@@ -180,14 +181,14 @@ const ProfilePage: React.FC = () => {
                     <Typography variant="subtitle1" gutterBottom>Learning style</Typography>
                     {edit ? (
                       <RadioGroup row value={format} onChange={(e)=>setFormat(e.target.value as any)}>
-                        <FormControlLabel value="video" control={<Radio />} label="Video" />
-                        <FormControlLabel value="text" control={<Radio />} label="Text" />
-                        <FormControlLabel value="mixed" control={<Radio />} label="Mixed" />
-                      </RadioGroup>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">{format.toUpperCase()}</Typography>
-                    )}
-                  </Box>
+                      <FormControlLabel value="video" control={<Radio />} label={<LearningStyleBadge value="video" />} />
+                      <FormControlLabel value="text" control={<Radio />} label={<LearningStyleBadge value="text" />} />
+                      <FormControlLabel value="mixed" control={<Radio />} label={<LearningStyleBadge value="mixed" />} />
+                    </RadioGroup>
+                  ) : (
+                      <LearningStyleBadge value={format} />
+                  )}
+                </Box>
                   {edit && <Button sx={{ mt: 1 }} variant="contained" onClick={save}>Save</Button>}
                 </>
               ) : (
@@ -204,7 +205,10 @@ const ProfilePage: React.FC = () => {
                   <Typography variant="body2">Member since: {user ? new Date(user.createdAt).toLocaleDateString() : '—'}</Typography>
                   {isLearner && (
                     <>
-                      <Typography variant="body2" color="text.secondary">Learning style: {format.toUpperCase()}</Typography>
+                      <Box sx={{ display:'inline-flex', alignItems:'center', gap: 1 }}>
+                        <Typography variant="body2" color="text.secondary">Learning style:</Typography>
+                        <LearningStyleBadge value={format} />
+                      </Box>
                       <Typography variant="body2" color="text.secondary">Lessons done: {completedLessons}</Typography>
                       <Typography variant="body2" color="text.secondary">Streak: {streak} day(s)</Typography>
                     </>

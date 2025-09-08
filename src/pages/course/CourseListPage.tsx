@@ -39,18 +39,29 @@ const CourseListPage: React.FC = () => {
       title: item.courseResponse.title,
       description: item.courseResponse.description,
       status: item.courseResponse.status, // Backend uppercase
-      teacher: item.createdBy || item.courseResponse.ownerUserId || '',
+      teacher: item.createdBy || (item as any).ownerName || item.courseResponse.ownerUserId || '',
       enrolled: item.totalStudents,
       rating: 0,
       duration: '',
       level: '',
+      lang: item.courseResponse.lang,
     }));
   }, [myCourses]);
 
-  const filteredCourses = courses.filter(course =>
-    course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'READY' | 'DRAFT' | 'INGEST_FAILED' | 'ARCHIVED' | 'DELETED'>('ALL');
+  const [langFilter, setLangFilter] = useState<'ALL' | 'en' | 'ru' | 'uz'>('ALL');
+
+  const filteredCourses = courses
+    .filter(c => (
+      statusFilter === 'ALL'
+        ? c.status !== 'DELETED'
+        : c.status === statusFilter
+    ))
+    .filter(c => (langFilter === 'ALL' ? true : (String(c.lang || '').toLowerCase() === langFilter)))
+    .filter(course =>
+      course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      course.description.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -59,6 +70,7 @@ const CourseListPage: React.FC = () => {
       case 'DRAFT': return 'warning';
       case 'INGEST_FAILED': return 'error';
       case 'ARCHIVED': return 'default';
+      case 'DELETED': return 'default';
       default: return 'default';
     }
   };
@@ -83,25 +95,60 @@ const CourseListPage: React.FC = () => {
         )}
       </Box>
 
-      {/* Search */}
-      <Box sx={{ mb: 3 }}>
-        <TextField
-          fullWidth
-          placeholder="Search courses..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
+      {/* Filters */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <TextField
+            fullWidth
+            placeholder="Search courses..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, md: 3 }}>
+          <TextField
+            fullWidth
+            label="Status"
+            value={statusFilter}
+            onChange={(e)=> setStatusFilter(e.target.value as any)}
+            select
+            SelectProps={{ native: true }}
+          >
+            <option value="ALL">All (except Deleted)</option>
+            <option value="PUBLISHED">Published</option>
+            <option value="READY">Ready</option>
+            <option value="DRAFT">Draft</option>
+            <option value="INGEST_FAILED">Ingest Failed</option>
+            <option value="ARCHIVED">Archived</option>
+            <option value="DELETED">Deleted</option>
+          </TextField>
+        </Grid>
+        <Grid size={{ xs: 6, md: 3 }}>
+          <TextField
+            fullWidth
+            label="Language"
+            value={langFilter}
+            onChange={(e)=> setLangFilter(e.target.value as any)}
+            select
+            SelectProps={{ native: true }}
+          >
+            <option value="ALL">All</option>
+            <option value="en">EN</option>
+            <option value="ru">RU</option>
+            <option value="uz">UZ</option>
+          </TextField>
+        </Grid>
+      </Grid>
 
       {/* Course Grid */}
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, md: 3 }}>
         {filteredCourses.map((course) => (
           <Grid size={{ xs: 12, md: 6, lg: 4 }} key={course.id}>
             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

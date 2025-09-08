@@ -23,7 +23,7 @@ export interface BackendSource {
   uri: string;
 }
 
-export type BackendCourseStatus = 'DRAFT' | 'READY' | 'INGEST_FAILED' | 'PUBLISHED' | 'ARCHIVED';
+export type BackendCourseStatus = 'DRAFT' | 'READY' | 'INGEST_FAILED' | 'PUBLISHED' | 'ARCHIVED' | 'DELETED';
 
 export interface BackendCourse {
   id: string;
@@ -193,6 +193,11 @@ class ApiService {
   }>}): Promise<BackendCourse> {
     const res = await this.api.put<BackendCourse>(`/api/course/${courseId}/structure`, payload);
     return res.data;
+  }
+
+  // Soft delete: mark course as deleted
+  async deleteCourseSoft(courseId: string): Promise<void> {
+    await this.api.delete(`/api/course`, { params: { courseId } });
   }
 
   async getStudentProfile(): Promise<StudentProfileDTO> {
