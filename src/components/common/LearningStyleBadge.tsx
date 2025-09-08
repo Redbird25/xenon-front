@@ -34,8 +34,15 @@ const LearningStyleBadge: React.FC<Props> = ({ value, size = 'small' }) => {
       sx={{
         fontWeight: 700,
         borderRadius: 999,
+        height: 'auto',
+        padding: '10px', // uniform padding
         '& .MuiChip-label': {
-          padding: '15px 10px', // vertical 15px, horizontal 10px
+          padding: 0,
+          lineHeight: 1.1,
+        },
+        '& .MuiChip-icon': {
+          marginLeft: 0.25,
+          marginRight: 0.75,
         },
       }}
     />
