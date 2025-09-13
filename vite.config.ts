@@ -28,6 +28,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/materialization': {
+        target: 'http://75.119.145.146:8899',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   preview: {

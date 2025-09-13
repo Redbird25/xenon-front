@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
@@ -10,6 +10,7 @@ import {
   LinearProgress,
   Chip,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { Link } from 'react-router-dom';
@@ -18,9 +19,12 @@ import {
   ArrowForward,
   CheckCircle,
   RadioButtonUnchecked,
+  Error,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { apiService } from '../../services/api';
+import { Materialization, MaterializationStatus } from '../../types';
 
 const StudentLessonPage: React.FC = () => {
   const { courseId, lessonId } = useParams();
@@ -29,59 +33,107 @@ const StudentLessonPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [showResults, setShowResults] = useState(false);
+  const [materialization, setMaterialization] = useState<Materialization | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock lesson data
-  const lesson = {
-    id: lessonId,
-    title: 'Introduction to Variables',
-    content: `
-      <h2>What are Variables?</h2>
-      <p>Variables are containers for storing data values. In Python, you don't need to declare variables with any particular type, and you can change the type after they have been set.</p>
+  // Load materialization data on component mount
+  useEffect(() => {
+    if (!user?.id || !lessonId || !courseId) return;
 
-      <h3>Creating Variables</h3>
-      <p>Python has no command for declaring a variable. A variable is created the moment you first assign a value to it.</p>
+    let cancelled = false;
 
-      <pre><code>x = 5
-y = "Hello, World!"
-print(x)
-print(y)</code></pre>
+    const loadMaterialization = async () => {
+      if (cancelled) return;
+      try {
+        setIsLoading(true);
+        setError(null);
 
-      <h3>Variable Names</h3>
-      <ul>
-        <li>A variable name must start with a letter or the underscore character</li>
-        <li>A variable name cannot start with a number</li>
-        <li>A variable name can only contain alpha-numeric characters and underscores</li>
-        <li>Variable names are case-sensitive</li>
-      </ul>
-    `,
-    quiz: {
-      questions: [
-        {
-          id: 1,
-          question: "What is a variable in Python?",
-          options: [
-            "A container for storing data values",
-            "A type of function",
-            "A mathematical operation",
-            "A comment in code"
-          ],
-          correctAnswer: 0,
-          explanation: "Variables are containers that store data values in Python."
-        },
-        {
-          id: 2,
-          question: "Which of the following is a valid variable name in Python?",
-          options: [
-            "2variable",
-            "variable_name",
-            "_private",
-            "for"
-          ],
-          correctAnswer: 1,
-          explanation: "Variable names must start with a letter or underscore, and 'for' is a reserved keyword."
+        console.log('Loading materialization for:', { studentId: user.id, lessonId, courseId });
+
+        // Try to get existing materialization
+        const data = await apiService.getMaterialization(user.id, lessonId);
+        console.log('Materialization loaded:', JSON.stringify(data, null, 2));
+        console.log('Sections count:', data?.sections?.length);
+        console.log('Generation status:', data?.generationStatus);
+
+        if (cancelled) return;
+        setMaterialization(data);
+
+        // If status is GENERATING, start polling
+        if (data.generationStatus === 'GENERATING') {
+          startPolling();
         }
-      ]
-    }
+
+      } catch (error: any) {
+        const status = error.response?.status;
+        if (status === 404) {
+          // No materialization exists, start new one
+          try {
+            if (cancelled) return;
+            await apiService.startMaterialization({ courseId, lessonId });
+            if (cancelled) return;
+            showToast('Starting lesson preparation...', 'info');
+            startPolling();
+          } catch (startError) {
+            if (cancelled) return;
+            console.error('Failed to start materialization:', startError);
+            setError('Failed to start lesson preparation');
+          }
+        } else if (status === 304) {
+          // Not modified - content hasn't changed, but this shouldn't happen on first load
+          console.log('Content not modified (304)');
+          setError('Unable to load lesson content');
+        } else {
+          if (cancelled) return;
+          console.error('Failed to load materialization:', error);
+          setError('Failed to load lesson content');
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    loadMaterialization();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, lessonId, courseId]);
+
+  const startPolling = () => {
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    const poll = async () => {
+      if (!user?.id || !lessonId) {
+        if (pollInterval) clearInterval(pollInterval);
+        return;
+      }
+
+      try {
+        const data = await apiService.getMaterialization(user.id, lessonId);
+        setMaterialization(data);
+
+        if (data.generationStatus !== 'GENERATING') {
+          if (pollInterval) clearInterval(pollInterval);
+          if (data.generationStatus === 'FINISHED') {
+            showToast('Lesson is ready!', 'success');
+          } else if (data.generationStatus === 'FAILED') {
+            setError('Failed to generate lesson content');
+          }
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+        if (pollInterval) clearInterval(pollInterval);
+      }
+    };
+
+    pollInterval = setInterval(poll, 3000); // Poll every 3 seconds
+
+    // Cleanup after 5 minutes
+    setTimeout(() => {
+      if (pollInterval) clearInterval(pollInterval);
+    }, 300000);
   };
 
   const handleQuizAnswer = (questionId: number, answerIndex: number) => {
@@ -138,6 +190,79 @@ print(y)</code></pre>
     { id: 'results', label: 'Results', completed: false }
   ];
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+        <CircularProgress size={60} />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Loading lesson...
+        </Typography>
+      </Box>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+        <Error sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
+        <Typography variant="h6" color="error" gutterBottom>
+          Something went wrong
+        </Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+          {error}
+        </Typography>
+        <Button variant="contained" onClick={() => window.location.reload()}>
+          Try Again
+        </Button>
+      </Box>
+    );
+  }
+
+  // Show generating state
+  if (materialization?.generationStatus === 'GENERATING') {
+    return (
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+        <CircularProgress size={60} />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Preparing your personalized lesson...
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          This may take a few moments
+        </Typography>
+      </Box>
+    );
+  }
+
+  // Show failed state
+  if (materialization?.generationStatus === 'FAILED') {
+    return (
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+        <Error sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
+        <Typography variant="h6" color="error" gutterBottom>
+          Failed to generate lesson
+        </Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+          We couldn't prepare your lesson content. Please try again.
+        </Typography>
+        <Button variant="contained" onClick={() => window.location.reload()}>
+          Try Again
+        </Button>
+      </Box>
+    );
+  }
+
+  if (!materialization || materialization.generationStatus !== 'FINISHED') {
+    return (
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+        <Typography variant="h6" color="text.secondary">
+          No lesson content available
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box>
       {/* Header */}
@@ -146,7 +271,7 @@ print(y)</code></pre>
           Back to Course
         </Button>
         <Typography variant="h5">
-          {lesson.title}
+          Lesson Content
         </Typography>
         <Box width={100} /> {/* Spacer */}
       </Box>
@@ -172,143 +297,67 @@ print(y)</code></pre>
       {/* Lesson Content */}
       {currentStep === 0 && (
         <Paper sx={{ p: 3 }}>
-          <div dangerouslySetInnerHTML={{ __html: lesson.content }} />
+          {materialization.sections.map((section, index) => (
+            <Box key={index} sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom>
+                {section.title}
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
+                {section.content}
+              </Typography>
+              {section.examples.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Examples:
+                  </Typography>
+                  {section.examples.map((example, exIndex) => (
+                    <Paper
+                      key={exIndex}
+                      sx={{
+                        p: 2,
+                        mb: 1,
+                        bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
+                        border: (theme) => `1px solid ${theme.palette.divider}`,
+                        overflow: 'auto'
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        component="pre"
+                        sx={{
+                          fontFamily: 'Consolas, "Courier New", monospace',
+                          fontSize: '0.875rem',
+                          lineHeight: 1.5,
+                          margin: 0,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word'
+                        }}
+                      >
+                        {example}
+                      </Typography>
+                    </Paper>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          ))}
 
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">
+              Generated from {materialization.generatedFromChunks.length} knowledge sources
+            </Typography>
             <Button
               variant="contained"
               endIcon={<ArrowForward />}
-              onClick={() => setCurrentStep(1)}
+              onClick={() => showToast('Quiz feature coming soon!', 'info')}
             >
-              Take Quiz
+              Continue Learning
             </Button>
           </Box>
         </Paper>
       )}
 
-      {/* Quiz */}
-      {currentStep === 1 && (
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Knowledge Check
-          </Typography>
-
-          {lesson.quiz.questions.map((question, qIndex) => (
-            <Card key={question.id} sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {qIndex + 1}. {question.question}
-                </Typography>
-
-                {question.options.map((option, oIndex) => (
-                  <Box
-                    key={oIndex}
-                    sx={{
-                      p: 2,
-                      mb: 1,
-                      border: '1px solid',
-                      borderColor: quizAnswers[question.id] === oIndex ? 'primary.main' : 'grey.300',
-                      borderRadius: 1,
-                      cursor: 'pointer',
-                      '&:hover': { bgcolor: 'action.hover' }
-                    }}
-                    onClick={() => handleQuizAnswer(question.id, oIndex)}
-                  >
-                    <Typography>
-                      {String.fromCharCode(65 + oIndex)}. {option}
-                    </Typography>
-                  </Box>
-                ))}
-
-                {showResults && (
-                  <Alert
-                    severity={quizAnswers[question.id] === question.correctAnswer ? 'success' : 'error'}
-                    sx={{ mt: 2 }}
-                  >
-                    {quizAnswers[question.id] === question.correctAnswer ? 'Correct!' : 'Incorrect. '}
-                    {question.explanation}
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-
-          {!showResults ? (
-            <Box display="flex" justifyContent="space-between">
-              <Button
-                startIcon={<ArrowBack />}
-                onClick={() => setCurrentStep(0)}
-              >
-                Back to Lesson
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleSubmitQuiz}
-                disabled={Object.keys(quizAnswers).length !== lesson.quiz.questions.length}
-              >
-                Submit Quiz
-              </Button>
-            </Box>
-          ) : (
-            <Box textAlign="center" sx={{ mt: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                Quiz Complete!
-              </Typography>
-              <Typography variant="h4" color="primary" sx={{ mb: 2 }}>
-                {calculateScore()}% Score
-              </Typography>
-              <LinearProgress
-                variant="determinate"
-                value={calculateScore()}
-                sx={{ height: 10, borderRadius: 5, mb: 2 }}
-              />
-              <Button
-                variant="contained"
-                size="large"
-                endIcon={<ArrowForward />}
-                onClick={() => setCurrentStep(2)}
-              >
-                Continue
-              </Button>
-            </Box>
-          )}
-        </Paper>
-      )}
-
-      {/* Results */}
-      {currentStep === 2 && (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="h4" gutterBottom>
-            Lesson Completed! 🎉
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 3 }}>
-            Great job! You've successfully completed this lesson.
-          </Typography>
-
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Your Progress
-            </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={75} // Mock progress
-              sx={{ height: 12, borderRadius: 6 }}
-            />
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Course Progress: 75%
-            </Typography>
-          </Box>
-
-          <Box display="flex" gap={2} justifyContent="center">
-            <Button variant="outlined" href={`/courses/${courseId}`}>
-              Back to Course
-            </Button>
-            <Button variant="contained">
-              Next Lesson
-            </Button>
-          </Box>
-        </Paper>
-      )}
     </Box>
   );
 };

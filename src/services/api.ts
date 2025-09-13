@@ -58,7 +58,9 @@ import {
   SearchResponse,
   Course,
   Enrollment,
-  StudentProgress
+  StudentProgress,
+  Materialization,
+  StartMaterializationRequest
 } from '../types';
 
 class ApiService {
@@ -70,9 +72,9 @@ class ApiService {
     const configured: string | undefined = env?.VITE_API_BASE_URL;
     // To avoid Mixed Content on HTTPS (Netlify), use same-origin relative base in prod
     // unless an explicit HTTPS API base is provided.
-    const baseURL = isDev
-      ? ''
-      : (configured && /^https:\/\//i.test(configured) ? configured : '');
+    const baseURL = isDev ? '' : (configured || '');
+    console.log('API Configuration:', { isDev, configured, baseURL });
+
     this.api = axios.create({
       baseURL,
       timeout: 30000,
@@ -84,6 +86,7 @@ class ApiService {
     // Request interceptor for auth
     this.api.interceptors.request.use(
       (config) => {
+        console.log('Making API request:', config.method?.toUpperCase(), config.url, config.baseURL);
         // Prefer new keys; support legacy for dev
         const token = localStorage.getItem('access_token') || localStorage.getItem('authToken');
         if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -301,6 +304,22 @@ class ApiService {
       mastery
     });
     return response.data;
+  }
+
+  // Materialization endpoints
+  async getMaterialization(studentId: string, lessonId: string): Promise<Materialization> {
+    const response = await this.api.get<Materialization>('/materialization', {
+      params: { studentId, lessonId },
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
+    return response.data;
+  }
+
+  async startMaterialization(request: StartMaterializationRequest): Promise<void> {
+    await this.api.post('/materialization/start', request);
   }
 
   // Health check

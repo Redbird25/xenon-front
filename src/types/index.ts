@@ -161,3 +161,30 @@ export interface SearchResponse {
   total_results: number;
   search_type: string;
 }
+
+// Materialization types
+export interface MaterializationSection {
+  lessonMaterialId: string;
+  title: string;
+  content: string;
+  examples: string[];
+}
+
+export type MaterializationStatus = 'GENERATING' | 'FINISHED' | 'FAILED';
+export type MaterializationStrategy = 'RESOURCE_RICH';
+
+export interface Materialization {
+  lessonId: string;
+  lessonMaterialId: string;
+  studentId: string;
+  sections: MaterializationSection[];
+  strategy: MaterializationStrategy;
+  createdAt: string;
+  generatedFromChunks: string[];
+  generationStatus: MaterializationStatus;
+}
+
+export interface StartMaterializationRequest {
+  courseId: string;
+  lessonId: string;
+}

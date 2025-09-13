@@ -65,11 +65,14 @@ const TeacherCourseEditPage: React.FC = () => {
     refetchInterval: (query) => {
       if (!startedAtRef.current) startedAtRef.current = Date.now();
       const elapsed = Date.now() - startedAtRef.current;
-      if (elapsed > 120000) return false;
+      // Увеличить таймаут до 5 минут
+      if (elapsed > 300000) return false;
       const current = (query.state.data as BackendCourse | undefined)?.status;
       // poll every 3s while generating or until first data arrives
       if (!current) return 3000;
-      return current === 'DRAFT' ? 3000 : false;
+      // Продолжать поллинг при всех промежуточных статусах
+      const processingStatuses = ['DRAFT', 'INGESTING'];
+      return processingStatuses.includes(current) ? 3000 : false;
     },
     staleTime: 30000,
     refetchOnWindowFocus: false,
@@ -108,12 +111,19 @@ const TeacherCourseEditPage: React.FC = () => {
   useEffect(() => {
     const cur = course?.status;
     const prev = lastStatusRef.current;
-    if (cur && prev && prev === 'DRAFT' && cur === 'READY') {
-      showToast('Course content is ready', 'success');
+    
+    if (cur && prev) {
+      if (prev === 'DRAFT' && cur === 'INGESTING') {
+        showToast('Processing course content...', 'info');
+      }
+      if (['DRAFT', 'INGESTING'].includes(prev) && cur === 'READY') {
+        showToast('Course content is ready', 'success');
+      }
+      if (['DRAFT', 'INGESTING'].includes(prev) && cur === 'INGEST_FAILED') {
+        showToast('Failed to generate course content', 'error');
+      }
     }
-    if (cur && prev && prev === 'DRAFT' && cur === 'INGEST_FAILED') {
-      showToast('Failed to generate course content', 'error');
-    }
+    
     if (cur) lastStatusRef.current = cur;
   }, [course?.status]);
 
@@ -345,9 +355,12 @@ const TeacherCourseEditPage: React.FC = () => {
               Course Structure
             </Typography>
 
-            {(courseData.modules.length === 0 && (course?.status === 'DRAFT')) && (
+            {(courseData.modules.length === 0 && ['DRAFT', 'INGESTING'].includes(course?.status || '')) && (
               <Alert severity="info" sx={{ mb: 2 }}>
-                Generating course modules and lessons… Please wait a bit. We’ll refresh automatically.
+                {course?.status === 'INGESTING' 
+                  ? 'Processing course content... Please wait while AI generates modules and lessons.'
+                  : 'Generating course modules and lessons… Please wait a bit. We\'ll refresh automatically.'
+                }
               </Alert>
             )}
 

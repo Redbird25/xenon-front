@@ -171,7 +171,13 @@ const CourseDetailPage: React.FC = () => {
                         </Box>
                       </Box>
                       <Box display="flex" alignItems="center" gap={2}>
-                        <Button size="small" variant="outlined" startIcon={<PlayArrow />} disabled>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<PlayArrow />}
+                          component={Link}
+                          to={`/learn/${courseId}/${lesson.id}`}
+                        >
                           Start
                         </Button>
                       </Box>
