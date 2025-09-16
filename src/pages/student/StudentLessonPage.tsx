@@ -62,6 +62,10 @@ const StudentLessonPage: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const startMaterializationRequestedRef = React.useRef(false);
 
+  useEffect(() => {
+    startMaterializationRequestedRef.current = false;
+  }, [lessonId, user?.id, courseId]);
+
   const isAnswerInvalid = React.useCallback((q: any, val: any) => {
     const t = String(q?.type || '').toLowerCase();
     if (t === 'short_answer') {
@@ -984,3 +988,4 @@ const StudentLessonPage: React.FC = () => {
 };
 
 export default StudentLessonPage;
+
