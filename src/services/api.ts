@@ -81,8 +81,8 @@ class ApiService {
     const configuredTimeout = Number(env?.VITE_API_TIMEOUT_MS);
     // To avoid Mixed Content on HTTPS (Netlify), use same-origin relative base in prod
     // unless an explicit HTTPS API base is provided.
-    const defaultProdBase = 'http://75.119.145.146:8899';
-    const baseURL = isDev ? '' : (configured || defaultProdBase);
+    const normalizedConfigured = typeof configured === 'string' && configured.trim().length > 0 ? configured.trim() : undefined;
+    const baseURL = isDev ? '' : (normalizedConfigured || '');
     const timeout = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 120000;
     console.log('API Configuration:', { isDev, configured, baseURL });
 
