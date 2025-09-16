@@ -102,6 +102,21 @@ export interface StudentProgress {
   completed: boolean;
 }
 
+// Lesson progress (server-authoritative)
+export type LessonStep = 'QUIZ' | 'LESSON' | 'RESULTS' | 'PRACTICE' | 'CODE';
+export type LessonProgressStatus = 'NOT_STARTED' | 'STARTED' | 'FINISHED';
+
+export interface LessonProgress {
+  id: string;
+  lessonId: string;
+  lessonPosition: number;
+  studentId: string;
+  mastery: number; // 0..1
+  step: LessonStep;
+  completedAt?: string;
+  status: LessonProgressStatus;
+}
+
 export interface ChatMessage {
   id: string;
   lessonId: string;
@@ -187,4 +202,63 @@ export interface Materialization {
 export interface StartMaterializationRequest {
   courseId: string;
   lessonId: string;
+}
+
+// Materialization Quiz types (from /materialization/quiz)
+export type MaterializationQuizStatus = 'GENERATING' | 'FINISHED' | 'FAILED';
+
+export interface MaterializationQuizOption {
+  id: string;
+  optionRef: string;
+  text: string;
+  question: string;
+}
+
+export interface MaterializationQuizQuestion {
+  id: string;
+  questionId: string;
+  type: string;
+  prompt: string;
+  quiz: string;
+  options: MaterializationQuizOption[];
+}
+
+export interface MaterializationQuiz {
+  id: string;
+  quizId?: string;
+  lessonMaterialId: string;
+  questions: MaterializationQuizQuestion[];
+  status: MaterializationQuizStatus;
+}
+
+export interface MaterializationQuizEvaluateItem {
+  question: string;
+  answer: string[];
+}
+
+export interface MaterializationQuizEvaluateRequest {
+  quizId: string;
+  items: MaterializationQuizEvaluateItem[];
+}
+
+export interface MaterializationQuizEvaluateContentItem {
+  question: string;
+  options: string[];
+}
+
+export interface MaterializationQuizEvaluateDetail {
+  questionId: string;
+  verdict: string;
+  score: number;
+  explanation: string;
+}
+
+export interface MaterializationQuizEvaluateResponse {
+  id: string;
+  quizId: string;
+  studentId: string;
+  scorePercent: number;
+  content: MaterializationQuizEvaluateContentItem[];
+  details: MaterializationQuizEvaluateDetail[];
+  createdAt: string;
 }

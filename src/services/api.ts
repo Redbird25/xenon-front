@@ -1,5 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
-import type { StudentProfileDTO, LearningStyle } from '../types';
+import type {
+  StudentProfileDTO,
+  LearningStyle,
+  LessonProgress,
+  LessonStep,
+  MaterializationQuiz,
+  MaterializationQuizEvaluateRequest,
+  MaterializationQuizEvaluateResponse,
+} from '../types';
 
 // Minimal backend course types for new API
 export interface BackendLesson {
@@ -70,14 +78,16 @@ class ApiService {
     const env = (import.meta as any).env || {};
     const isDev = !!env.DEV;
     const configured: string | undefined = env?.VITE_API_BASE_URL;
+    const configuredTimeout = Number(env?.VITE_API_TIMEOUT_MS);
     // To avoid Mixed Content on HTTPS (Netlify), use same-origin relative base in prod
     // unless an explicit HTTPS API base is provided.
-    const baseURL = isDev ? '' : (configured || '');
+    const baseURL = isDev ? '' : (configured || 'http://gateway:8899');
+    const timeout = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 120000;
     console.log('API Configuration:', { isDev, configured, baseURL });
 
     this.api = axios.create({
       baseURL,
-      timeout: 30000,
+      timeout,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -212,6 +222,29 @@ class ApiService {
     await this.api.put('/student/profile', payload);
   }
 
+  // Lesson progress (server-authoritative step/state)
+  async startLessonProgress(lessonId: string): Promise<LessonProgress> {
+    const res = await this.api.post<LessonProgress>(
+      '/student/lesson-progress/start',
+      {},
+      { params: { lessonId } }
+    );
+    return res.data;
+  }
+
+  async changeLessonProgressStep(lessonProgressId: string, step: LessonStep): Promise<LessonProgress> {
+    const res = await this.api.put<LessonProgress>('/student/lesson-progress/change-step', {
+      lessonProgressId,
+      step,
+    });
+    return res.data;
+  }
+
+  async getLessonProgress(lessonId: string): Promise<LessonProgress> {
+    const res = await this.api.get<LessonProgress>('/student/lesson-progress', { params: { lessonId } });
+    return res.data;
+  }
+
   // AI Service endpoints
   async ingestResources(request: IngestRequest): Promise<IngestResponse> {
     const response = await this.api.post<IngestResponse>('/ai/ingest/resources', request);
@@ -228,6 +261,28 @@ class ApiService {
       params: { top_k: topK }
     });
     return response.data;
+  }
+
+  // Materialization Quiz
+  async getMaterializationQuiz(lessonMaterialId: string): Promise<MaterializationQuiz> {
+    const res = await this.api.get<MaterializationQuiz>('/materialization/quiz', { params: { lessonMaterialId } });
+    return res.data;
+  }
+
+  async retryMaterializationQuiz(lessonMaterialId: string, courseId: string): Promise<void> {
+    await this.api.post('/materialization/quiz/try-again', {}, { params: { lessonMaterialId, courseId } });
+  }
+
+  async evaluateMaterializationQuiz(
+    lessonId: string,
+    payload: MaterializationQuizEvaluateRequest
+  ): Promise<MaterializationQuizEvaluateResponse> {
+    const res = await this.api.post<MaterializationQuizEvaluateResponse>(
+      '/materialization/evaluate',
+      payload,
+      { params: { lessonId } }
+    );
+    return res.data;
   }
 
   // Core Service endpoints (when implemented)

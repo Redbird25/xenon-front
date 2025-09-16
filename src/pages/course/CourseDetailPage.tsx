@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -29,6 +29,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useQuery } from '@tanstack/react-query';
 import api, { BackendCourse } from '../../services/api';
 import ExpandMore from '@mui/icons-material/ExpandMore';
+import type { LessonProgress } from '../../types';
 
 const CourseDetailPage: React.FC = () => {
   const { courseId } = useParams();
@@ -45,8 +46,86 @@ const CourseDetailPage: React.FC = () => {
   });
 
   const teacherName: string = location?.state?.teacher || course?.ownerUserId || 'Instructor';
+  const [progressByLesson, setProgressByLesson] = useState<Record<string, LessonProgress | null>>({});
 
-  // no-op helpers for now
+  const lessonsFlat = useMemo(() => {
+    if (!course) return [] as Array<{ id: string; position: number; title: string; description?: string }>;
+    const modulesSorted = [...(course.modules || [])].sort((a,b)=> (a.position||0)-(b.position||0));
+    const lessons = modulesSorted.flatMap((m) =>
+      [...(m.lessons || [])]
+        .sort((a,b)=> (a.position||0)-(b.position||0))
+        .map(l => ({ id: l.id, position: l.position, title: l.title, description: l.description }))
+    );
+    return lessons;
+  }, [course?.id]);
+
+  const totalLessons = lessonsFlat.length;
+  const firstLessonId = lessonsFlat[0]?.id;
+
+  const [loadingProgress, setLoadingProgress] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!course || totalLessons === 0) return;
+      setLoadingProgress(true);
+      try {
+        const results = await Promise.allSettled(
+          lessonsFlat.map(async (l) => {
+            try {
+              const p = await api.getLessonProgress(l.id);
+              return { id: l.id, progress: p as LessonProgress };
+            } catch (e: any) {
+              if (e?.response?.status === 404) return { id: l.id, progress: null };
+              throw e;
+            }
+          })
+        );
+        if (cancelled) return;
+        const map: Record<string, LessonProgress | null> = {};
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            map[r.value.id] = r.value.progress;
+          }
+        }
+        setProgressByLesson(map);
+      } catch {
+        // ignore network errors; keep empty map
+      } finally {
+        if (!cancelled) setLoadingProgress(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [course?.id, totalLessons]);
+
+  const finishedCount = useMemo(() =>
+    Object.values(progressByLesson).filter((p) => p?.status === 'FINISHED').length,
+    [progressByLesson]
+  );
+  const courseStarted = !!(firstLessonId && progressByLesson[firstLessonId]);
+  const progressPct = totalLessons ? Math.round((finishedCount / totalLessons) * 100) : 0;
+
+  const handleStartCourse = async () => {
+    if (!firstLessonId) return;
+    try {
+      const p = await api.startLessonProgress(firstLessonId);
+      setProgressByLesson((prev) => ({ ...prev, [firstLessonId]: p }));
+      showToast('Course started', 'success');
+    } catch (e) {
+      showToast('Failed to start course', 'error');
+    }
+  };
+
+  const computeButton = (lessonId: string, index: number) => {
+    const cur = progressByLesson[lessonId];
+    const prev = index > 0 ? progressByLesson[lessonsFlat[index - 1].id] : undefined;
+    const allowed = courseStarted && (index === 0 || prev?.status === 'FINISHED');
+    let label: 'Start' | 'Resume' | 'Review' = 'Start';
+    if (cur?.status === 'STARTED') label = 'Resume';
+    if (cur?.status === 'FINISHED') label = 'Review';
+    return { allowed, label };
+  };
 
   return (
     <Box>
@@ -104,7 +183,7 @@ const CourseDetailPage: React.FC = () => {
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={0}
+                  value={progressPct}
                   sx={{
                     height: 8,
                     borderRadius: 4,
@@ -114,7 +193,18 @@ const CourseDetailPage: React.FC = () => {
                     }
                   }}
                 />
-                <Typography variant="body2" color="text.secondary">Not started</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {courseStarted
+                    ? (finishedCount === totalLessons && totalLessons > 0
+                        ? 'Completed'
+                        : `${finishedCount} of ${totalLessons} lessons (${progressPct}%)`)
+                    : 'Not started'}
+                </Typography>
+                {!courseStarted && (
+                  <Button sx={{ mt: 1 }} variant="contained" onClick={handleStartCourse} disabled={loadingProgress || !firstLessonId}>
+                    Start Course
+                  </Button>
+                )}
               </Box>
             </Box>
           </Grid>
@@ -171,15 +261,28 @@ const CourseDetailPage: React.FC = () => {
                         </Box>
                       </Box>
                       <Box display="flex" alignItems="center" gap={2}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<PlayArrow />}
-                          component={Link}
-                          to={`/learn/${courseId}/${lesson.id}`}
-                        >
-                          Start
-                        </Button>
+                        {(() => {
+                          const index = lessonsFlat.findIndex(l=>l.id===lesson.id);
+                          const { allowed, label } = computeButton(lesson.id, index);
+                          const mastery = progressByLesson[lesson.id]?.mastery ?? null;
+                          const tip = !allowed ? (!courseStarted ? 'Start the course to unlock' : 'Finish previous lesson to unlock') : '';
+                          return (
+                            <>
+                              {mastery !== null && <Chip size="small" label={`Mastery ${Math.round(mastery*100)}%`} />}
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<PlayArrow />}
+                                component={Link}
+                                to={`/learn/${courseId}/${lesson.id}`}
+                                disabled={!allowed}
+                                title={tip}
+                              >
+                                {label}
+                              </Button>
+                            </>
+                          );
+                        })()}
                       </Box>
                     </Box>
                     <Divider />
@@ -247,4 +350,3 @@ const CourseDetailPage: React.FC = () => {
 };
 
 export default CourseDetailPage;
-
