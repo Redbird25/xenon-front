@@ -197,6 +197,70 @@ const StudentLessonPage: React.FC = () => {
     }
   }, [displayAttempt?.createdAt, quizEvaluation?.createdAt]);
 
+  const attemptHistory = React.useMemo(() => {
+    const total = quizAttempts.length;
+    return quizAttempts.map((attempt, idx) => {
+      const score = toPercent(attempt.scorePercent);
+      let timestamp = attempt.createdAt;
+      try {
+        timestamp = new Date(attempt.createdAt).toLocaleString();
+      } catch {}
+      const isSelected = selectedAttemptId ? attempt.id === selectedAttemptId : idx === 0;
+      const chipColor = score !== null && score >= 80 ? 'success' : score !== null && score >= 50 ? 'warning' : 'error';
+      return {
+        attempt,
+        index: idx,
+        label: `Attempt ${total - idx}${idx === 0 ? ' (Latest)' : ''}`,
+        isSelected,
+        timestamp,
+        score,
+        chipColor,
+      };
+    });
+  }, [quizAttempts, selectedAttemptId, toPercent]);
+
+  const questionReviews = React.useMemo(() => {
+    const details = displayAttempt?.details || quizEvaluation?.details || [];
+    const content = displayAttempt?.content || quizEvaluation?.content || [];
+    if (!details.length) return [] as Array<{
+      key: string;
+      index: number;
+      questionText: string;
+      verdictLabel: string;
+      verdictColor: 'success' | 'warning' | 'error' | 'info';
+      userAnswerText: string;
+      recommendedText: string;
+      explanation?: string;
+    }>;
+    return details.map((detail, idx) => {
+      const meta = quizQuestionMap[String(detail.questionId)] || quizQuestionMap[String(idx)];
+      const question = meta?.question;
+      const questionText = question?.prompt || question?.quiz || content[idx]?.question || `Question ${idx + 1}`;
+      const isCurrentAttempt = displayAttempt?.id === quizEvaluation?.id;
+      const answerValue = isCurrentAttempt && meta ? answers[meta.key] : undefined;
+      const userAnswerText = isCurrentAttempt ? formatAnswerText(question, answerValue) : '—';
+      const recommended = content[idx]?.options || [];
+      const recommendedText = recommended.length ? recommended.join(', ') : '';
+      const verdictLabel = detail.verdict || 'Reviewed';
+      const verdictLower = verdictLabel.toLowerCase();
+      let verdictColor: 'success' | 'warning' | 'error' | 'info' = 'info';
+      if (verdictLower.includes('correct') || verdictLower.includes('pass')) verdictColor = 'success';
+      else if (verdictLower.includes('partial') || verdictLower.includes('review')) verdictColor = 'warning';
+      else if (verdictLower.includes('incorrect') || verdictLower.includes('wrong') || verdictLower.includes('fail')) verdictColor = 'error';
+
+      return {
+        key: `${detail.questionId || 'detail'}-${idx}`,
+        index: idx,
+        questionText,
+        verdictLabel,
+        verdictColor,
+        userAnswerText,
+        recommendedText,
+        explanation: detail.explanation,
+      };
+    });
+  }, [displayAttempt, quizEvaluation, quizQuestionMap, answers, formatAnswerText]);
+
   const formatAnswerText = React.useCallback(
     (question: MaterializationQuizQuestion | undefined, value: string | string[] | undefined) => {
       if (!value || (Array.isArray(value) && value.length === 0)) return '—';
@@ -1055,114 +1119,75 @@ const StudentLessonPage: React.FC = () => {
                 {attemptsError && (
                   <Alert severity="warning" sx={{ mb: 2 }}>{attemptsError}</Alert>
                 )}
-                {!attemptsLoading && quizAttempts.length === 0 && (
+                {!attemptsLoading && attemptHistory.length === 0 && (
                   <Typography variant="body2" color="text.secondary">
                     No recorded attempts yet.
                   </Typography>
                 )}
-                {!attemptsLoading && quizAttempts.length > 0 && (
+                {!attemptsLoading && attemptHistory.length > 0 && (
                   <Box display="flex" flexDirection="column" gap={1}>
-                    {quizAttempts.map((attempt, idx) => {
-                      const score = toPercent(attempt.scorePercent);
-                      const timestamp = (() => {
-                        try {
-                          return new Date(attempt.createdAt).toLocaleString();
-                        } catch {
-                          return attempt.createdAt;
-                        }
-                      })();
-                      const isSelected = (selectedAttemptId ? attempt.id === selectedAttemptId : idx === 0);
-                      const chipColor = score !== null && score >= 80 ? 'success' : score !== null && score >= 50 ? 'warning' : 'error';
-                      return (
-                        <Paper
-                          key={attempt.id}
-                          variant={isSelected ? 'outlined' : 'elevation'}
-                          sx={{
-                            p: 1.5,
-                            borderColor: isSelected ? 'primary.main' : undefined,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                          onClick={() => setSelectedAttemptId(attempt.id)}
-                        >
-                          <Box>
-                            <Typography variant="subtitle2" sx={{ fontWeight: isSelected ? 700 : 500 }}>
-                              Attempt {quizAttempts.length - idx}
-                              {idx === 0 ? ' (Latest)' : ''}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">{timestamp}</Typography>
-                          </Box>
-                          <Chip
-                            label={score !== null ? `${Math.round(score)}%` : '--'}
-                            color={score !== null ? chipColor : 'default'}
-                            size="small"
-                          />
-                        </Paper>
-                      );
-                    })}
+                    {attemptHistory.map(({ attempt, index, isSelected, timestamp, score, chipColor, label }) => (
+                      <Paper
+                        key={attempt.id}
+                        variant={isSelected ? 'outlined' : 'elevation'}
+                        sx={{
+                          p: 1.5,
+                          borderColor: isSelected ? 'primary.main' : undefined,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                        onClick={() => setSelectedAttemptId(attempt.id)}
+                      >
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: isSelected ? 700 : 500 }}>
+                            {label}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">{timestamp}</Typography>
+                        </Box>
+                        <Chip
+                          label={score !== null ? `${Math.round(score)}%` : '--'}
+                          color={score !== null ? chipColor : 'default'}
+                          size="small"
+                        />
+                      </Paper>
+                    ))}
                   </Box>
                 )}
               </Box>
 
               <Box sx={{ mt: 3 }}>
                 <Typography variant="h6" sx={{ mb: 2 }}>Question Review</Typography>
-                {(() => {
-                  const details = displayAttempt?.details || quizEvaluation?.details || [];
-                  if (!details.length) {
-                    return (
-                      <Typography variant="body2" color="text.secondary">
-                        No detailed feedback available yet.
-                      </Typography>
-                    );
-                  }
-                  return details.map((detail, idx) => {
-                    const meta = quizQuestionMap[String(detail.questionId)] || quizQuestionMap[String(idx)];
-                    const question = meta?.question;
-                    const activeContent = displayAttempt?.content || quizEvaluation?.content || [];
-                    const questionText = question?.prompt || question?.quiz || activeContent[idx]?.question || `Question ${idx + 1}`;
-                    const isCurrentAttempt = displayAttempt?.id === quizEvaluation?.id;
-                  const answerValue = isCurrentAttempt && meta ? answers[meta.key] : undefined;
-                  const userAnswerText = isCurrentAttempt ? formatAnswerText(question, answerValue) : '—';
-                  const recommended = activeContent[idx]?.options || [];
-                  const recommendedText = recommended.length ? recommended.join(', ') : '';
-                  const verdictLabel = detail.verdict || 'Reviewed';
-                  const verdictLower = verdictLabel.toLowerCase();
-                  let verdictColor: 'success' | 'warning' | 'error' | 'info' = 'info';
-                  if (verdictLower.includes('correct') || verdictLower.includes('pass')) {
-                    verdictColor = 'success';
-                  } else if (verdictLower.includes('partial') || verdictLower.includes('review')) {
-                    verdictColor = 'warning';
-                  } else if (verdictLower.includes('incorrect') || verdictLower.includes('wrong') || verdictLower.includes('fail')) {
-                    verdictColor = 'error';
-                  }
-
-                  return (
-                    <Paper key={`${detail.questionId || 'detail'}-${idx}`} variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                {questionReviews.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No detailed feedback available yet.
+                  </Typography>
+                ) : (
+                  questionReviews.map((item) => (
+                    <Paper key={item.key} variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
                       <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2} flexWrap="wrap">
                         <Typography variant="subtitle1" sx={{ flex: 1, minWidth: '60%', fontWeight: 600 }}>
-                          {idx + 1}. {questionText}
+                          {item.index + 1}. {item.questionText}
                         </Typography>
-                        <Chip label={verdictLabel} color={verdictColor} size="small" />
+                        <Chip label={item.verdictLabel} color={item.verdictColor} size="small" />
                       </Box>
                       <Typography variant="body2" sx={{ mt: 1 }}>
-                        <Box component="span" sx={{ fontWeight: 600 }}>Your answer:</Box> {userAnswerText}
+                        <Box component="span" sx={{ fontWeight: 600 }}>Your answer:</Box> {item.userAnswerText}
                       </Typography>
-                      {recommendedText && (
+                      {item.recommendedText && (
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          <Box component="span" sx={{ fontWeight: 600 }}>Suggested:</Box> {recommendedText}
+                          <Box component="span" sx={{ fontWeight: 600 }}>Suggested:</Box> {item.recommendedText}
                         </Typography>
                       )}
-                      {detail.explanation && (
+                      {item.explanation && (
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          {detail.explanation}
+                          {item.explanation}
                         </Typography>
                       )}
                     </Paper>
-                  );
-                  });
-                })()}
+                  ))
+                )}
               </Box>
 
               <Box display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap" sx={{ mt: 2 }}>
