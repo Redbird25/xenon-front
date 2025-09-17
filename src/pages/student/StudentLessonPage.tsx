@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -45,6 +45,7 @@ const getOptionLetter = (index: number) => String.fromCharCode(97 + index);
 
 const StudentLessonPage: React.FC = () => {
   const { courseId, lessonId } = useParams();
+  const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
   const [currentStep, setCurrentStep] = useState(0);
@@ -61,12 +62,19 @@ const StudentLessonPage: React.FC = () => {
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const startMaterializationRequestedRef = React.useRef(false);
+  const navigationPrevLessonId = React.useMemo(() => {
+    const state = location?.state as { prevLessonId?: string | null } | null;
+    const val = state?.prevLessonId;
+    return typeof val === 'string' && val.trim().length > 0 ? val.trim() : undefined;
+  }, [location?.state]);
+
   const prevLessonStorageKey = React.useMemo(() => {
     if (!user?.id || !courseId) return null;
     return `last_lesson_${user.id}_${courseId}`;
   }, [user?.id, courseId]);
 
   const getStoredPrevLessonId = React.useCallback(() => {
+    if (navigationPrevLessonId) return navigationPrevLessonId;
     if (!lessonId) return lessonId || '';
     if (!prevLessonStorageKey || typeof window === 'undefined') return lessonId;
     try {
@@ -78,7 +86,7 @@ const StudentLessonPage: React.FC = () => {
       // ignore storage errors
     }
     return lessonId;
-  }, [prevLessonStorageKey, lessonId]);
+  }, [navigationPrevLessonId, prevLessonStorageKey, lessonId]);
 
   useEffect(() => {
     startMaterializationRequestedRef.current = false;
@@ -302,16 +310,17 @@ const StudentLessonPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, lessonId, courseId]);
+  }, [user?.id, lessonId, courseId, getStoredPrevLessonId]);
 
   useEffect(() => {
-    if (!prevLessonStorageKey || !lessonId || typeof window === 'undefined') return;
+    if (!prevLessonStorageKey || typeof window === 'undefined') return;
+    if (!navigationPrevLessonId) return;
     try {
-      localStorage.setItem(prevLessonStorageKey, lessonId);
+      localStorage.setItem(prevLessonStorageKey, navigationPrevLessonId);
     } catch {
       // ignore storage errors
     }
-  }, [prevLessonStorageKey, lessonId]);
+  }, [prevLessonStorageKey, navigationPrevLessonId]);
 
   const startPolling = () => {
     let pollInterval: ReturnType<typeof setInterval> | null = null;

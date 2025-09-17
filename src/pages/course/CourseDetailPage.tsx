@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -105,6 +105,30 @@ const CourseDetailPage: React.FC = () => {
   );
   const courseStarted = !!(firstLessonId && progressByLesson[firstLessonId]);
   const progressPct = totalLessons ? Math.round((finishedCount / totalLessons) * 100) : 0;
+
+  const lastFinishedOverall = useMemo(() => {
+    let last: string | null = null;
+    lessonsFlat.forEach((lesson) => {
+      if (progressByLesson[lesson.id]?.status === 'FINISHED') {
+        last = lesson.id;
+      }
+    });
+    return last;
+  }, [lessonsFlat, progressByLesson]);
+
+  const resolvePrevLessonId = useCallback(
+    (lessonId: string, index: number): string => {
+      if (index < 0) return lastFinishedOverall || lessonId;
+      for (let i = index - 1; i >= 0; i--) {
+        const candidate = lessonsFlat[i];
+        if (candidate && progressByLesson[candidate.id]?.status === 'FINISHED') {
+          return candidate.id;
+        }
+      }
+      return lastFinishedOverall || lessonId;
+    },
+    [lessonsFlat, progressByLesson, lastFinishedOverall]
+  );
 
   const handleStartCourse = async () => {
     if (!firstLessonId) return;
@@ -266,6 +290,7 @@ const CourseDetailPage: React.FC = () => {
                           const { allowed, label } = computeButton(lesson.id, index);
                           const mastery = progressByLesson[lesson.id]?.mastery ?? null;
                           const tip = !allowed ? (!courseStarted ? 'Start the course to unlock' : 'Finish previous lesson to unlock') : '';
+                          const prevLessonIdForNav = resolvePrevLessonId(lesson.id, index);
                           return (
                             <>
                               {mastery !== null && <Chip size="small" label={`Mastery ${Math.round(mastery*100)}%`} />}
@@ -275,6 +300,7 @@ const CourseDetailPage: React.FC = () => {
                                 startIcon={<PlayArrow />}
                                 component={Link}
                                 to={`/learn/${courseId}/${lesson.id}`}
+                                state={{ prevLessonId: prevLessonIdForNav }}
                                 disabled={!allowed}
                                 title={tip}
                               >
