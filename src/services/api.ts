@@ -7,6 +7,7 @@ import type {
   MaterializationQuiz,
   MaterializationQuizEvaluateRequest,
   MaterializationQuizEvaluateResponse,
+  MaterializationQuizAttempt,
 } from '../types';
 
 // Minimal backend course types for new API
@@ -276,6 +277,18 @@ class ApiService {
     const params: Record<string, string> = { lessonMaterialId };
     if (courseId) params.courseId = courseId;
     await this.api.post('/materialization/quiz/try-again', undefined, { params });
+  }
+
+  async getMaterializationQuizAttempts(quizId: string): Promise<MaterializationQuizAttempt[]> {
+    const res = await this.api.get<MaterializationQuizAttempt[]>('/materialization/quiz/attempt', {
+      params: { quizId }
+    });
+    return res.data;
+  }
+
+  async getMaterializationQuizAttempt(attemptId: string): Promise<MaterializationQuizAttempt> {
+    const res = await this.api.get<MaterializationQuizAttempt>(`/materialization/quiz/attempt/${attemptId}`);
+    return res.data;
   }
 
   async evaluateMaterializationQuiz(

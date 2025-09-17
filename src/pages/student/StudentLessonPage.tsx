@@ -36,6 +36,7 @@ import {
   MaterializationQuiz,
   MaterializationQuizQuestion,
   MaterializationQuizEvaluateResponse,
+  MaterializationQuizAttempt,
 } from '../../types';
 
 const getQuizQuestionKey = (question: MaterializationQuizQuestion, index: number) =>
@@ -62,7 +63,12 @@ const StudentLessonPage: React.FC = () => {
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isRetryingLesson, setIsRetryingLesson] = useState(false);
+  const [quizAttempts, setQuizAttempts] = useState<MaterializationQuizAttempt[]>([]);
+  const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const [attemptsError, setAttemptsError] = useState<string | null>(null);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const startMaterializationRequestedRef = React.useRef(false);
+  const attemptsFetchedRef = React.useRef<string | null>(null);
   const navigationPrevLessonId = React.useMemo(() => {
     const state = location?.state as { prevLessonId?: string | null } | null;
     const val = state?.prevLessonId;
@@ -91,11 +97,11 @@ const StudentLessonPage: React.FC = () => {
 
   useEffect(() => {
     startMaterializationRequestedRef.current = false;
-  }, [lessonId]);
-
-  useEffect(() => {
-    startMaterializationRequestedRef.current = false;
-  }, [lessonId, user?.id, courseId]);
+    attemptsFetchedRef.current = null;
+    setQuizAttempts([]);
+    setSelectedAttemptId(null);
+    setAttemptsError(null);
+  }, [lessonId, courseId, user?.id]);
 
   const isAnswerInvalid = React.useCallback((q: any, val: any) => {
     const t = String(q?.type || '').toLowerCase();
@@ -149,21 +155,47 @@ const StudentLessonPage: React.FC = () => {
     return map;
   }, [quiz?.questions]);
 
-  const quizScorePercent = React.useMemo(() => {
-    if (!quizEvaluation) return null;
-    const raw = quizEvaluation.scorePercent ?? 0;
-    const normalized = raw > 1 ? raw : raw * 100;
+  const toPercent = React.useCallback((value?: number | null) => {
+    if (value === undefined || value === null) return null;
+    const normalized = value > 1 ? value : value * 100;
     return Math.max(0, Math.min(100, normalized));
-  }, [quizEvaluation]);
+  }, []);
 
-  const evaluationTimestamp = React.useMemo(() => {
-    if (!quizEvaluation?.createdAt) return '';
-    try {
-      return new Date(quizEvaluation.createdAt).toLocaleString();
-    } catch {
-      return quizEvaluation.createdAt;
+  const selectedAttempt = React.useMemo(() => {
+    if (selectedAttemptId) {
+      return quizAttempts.find((attempt) => attempt.id === selectedAttemptId) || null;
     }
-  }, [quizEvaluation?.createdAt]);
+    return quizAttempts[0] || null;
+  }, [quizAttempts, selectedAttemptId]);
+
+  const latestAttempt = React.useMemo(() => quizAttempts[0] || null, [quizAttempts]);
+
+  const displayAttempt = selectedAttempt || latestAttempt || quizEvaluation || null;
+
+  const displayScorePercent = React.useMemo(
+    () => toPercent(displayAttempt?.scorePercent ?? quizEvaluation?.scorePercent ?? null),
+    [displayAttempt?.scorePercent, quizEvaluation?.scorePercent, toPercent]
+  );
+
+  const latestScorePercent = React.useMemo(
+    () => toPercent(latestAttempt?.scorePercent ?? null),
+    [latestAttempt?.scorePercent, toPercent]
+  );
+
+  const masteryPercent = React.useMemo(
+    () => toPercent(lessonProgress?.mastery ?? null),
+    [lessonProgress?.mastery, toPercent]
+  );
+
+  const displayAttemptTimestamp = React.useMemo(() => {
+    const ts = displayAttempt?.createdAt || quizEvaluation?.createdAt;
+    if (!ts) return '';
+    try {
+      return new Date(ts).toLocaleString();
+    } catch {
+      return ts;
+    }
+  }, [displayAttempt?.createdAt, quizEvaluation?.createdAt]);
 
   const formatAnswerText = React.useCallback(
     (question: MaterializationQuizQuestion | undefined, value: string | string[] | undefined) => {
@@ -221,6 +253,18 @@ const StudentLessonPage: React.FC = () => {
       setSubmitError(null);
     }
   }, [answers]);
+
+  useEffect(() => {
+    if (!showResults) return;
+    const quizId = quiz?.id || quizEvaluation?.quizId;
+    if (!quizId) return;
+    if (attemptsFetchedRef.current === quizId && quizAttempts.length > 0) return;
+    attemptsFetchedRef.current = quizId;
+    fetchQuizAttempts(
+      quizId,
+      quizEvaluation?.id ? { selectAttemptId: quizEvaluation.id } : undefined
+    ).catch(() => {});
+  }, [showResults, quiz?.id, quizEvaluation?.quizId, quizEvaluation?.id, quizAttempts.length, fetchQuizAttempts]);
 
   // Reflect server step in UI; auto-fetch quiz if needed
   useEffect(() => {
@@ -340,6 +384,35 @@ const StudentLessonPage: React.FC = () => {
       setIsRetryingLesson(false);
     }
   };
+
+  const fetchQuizAttempts = React.useCallback(
+    async (quizId: string, options: { selectAttemptId?: string } = {}) => {
+      setAttemptsLoading(true);
+      setAttemptsError(null);
+      try {
+        const data = await apiService.getMaterializationQuizAttempts(quizId);
+        const sorted = [...data].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setQuizAttempts(sorted);
+        if (options.selectAttemptId) {
+          setSelectedAttemptId(options.selectAttemptId);
+        } else if (sorted.length > 0) {
+          if (!selectedAttemptId || !sorted.some((attempt) => attempt.id === selectedAttemptId)) {
+            setSelectedAttemptId(sorted[0].id);
+          }
+        } else {
+          setSelectedAttemptId(null);
+        }
+        return sorted;
+      } catch (err) {
+        console.error('Failed to fetch quiz attempts', err);
+        setAttemptsError('Failed to load attempt history');
+        throw err;
+      } finally {
+        setAttemptsLoading(false);
+      }
+    },
+    [selectedAttemptId]
+  );
 
   const startPolling = () => {
     let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -537,6 +610,12 @@ const StudentLessonPage: React.FC = () => {
         } catch (stepError) {
           console.error('Failed to sync lesson progress step', stepError);
         }
+      }
+
+      try {
+        await fetchQuizAttempts(evaluation.quizId, { selectAttemptId: evaluation.id });
+      } catch {
+        // errors handled in fetchQuizAttempts
       }
 
       try {
@@ -922,45 +1001,131 @@ const StudentLessonPage: React.FC = () => {
       {/* Results */}
       {currentStep === 2 && (
         <Paper sx={{ p: 3 }}>
-          {quizEvaluation ? (
+          {(displayAttempt || quizEvaluation || attemptsLoading) ? (
             <>
               <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" rowGap={2}>
                 <Box sx={{ minWidth: { xs: '100%', md: '45%' } }}>
                   <Typography variant="overline" color="text.secondary">Quiz Score</Typography>
                   <Typography variant="h3" sx={{ fontWeight: 700 }}>
-                    {quizScorePercent !== null ? `${Math.round(quizScorePercent)}%` : '--'}
+                    {displayScorePercent !== null ? `${Math.round(displayScorePercent)}%` : '--'}
                   </Typography>
                   <LinearProgress
                     variant="determinate"
-                    value={quizScorePercent ?? 0}
+                    value={displayScorePercent ?? 0}
                     sx={{ mt: 1, height: 10, borderRadius: 6, backgroundColor: (theme) => theme.palette.action.hover }}
                   />
                 </Box>
-                <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                  {quizScorePercent !== null && (
+                <Box sx={{ textAlign: { xs: 'left', md: 'right' }, minWidth: { xs: '100%', md: '45%' } }}>
+                  {displayScorePercent !== null && (
                     <Chip
-                      label={quizScorePercent >= 80 ? 'Mastered' : quizScorePercent >= 50 ? 'Keep practicing' : 'Needs review'}
-                      color={quizScorePercent >= 80 ? 'success' : quizScorePercent >= 50 ? 'warning' : 'error'}
-                      sx={{ fontWeight: 600 }}
+                      label={displayScorePercent >= 80 ? 'Mastered' : displayScorePercent >= 50 ? 'Keep practicing' : 'Needs review'}
+                      color={displayScorePercent >= 80 ? 'success' : displayScorePercent >= 50 ? 'warning' : 'error'}
+                      sx={{ fontWeight: 600, mr: 1, mb: { xs: 1, md: 0 } }}
                     />
                   )}
-                  {evaluationTimestamp && (
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                      Evaluated {evaluationTimestamp}
+                  {displayAttemptTimestamp && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      Evaluated {displayAttemptTimestamp}
                     </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    {quizAttempts.length > 0 ? `${quizAttempts.length} attempt${quizAttempts.length === 1 ? '' : 's'} recorded` : 'First attempt recorded'}
+                  </Typography>
+                  {latestScorePercent !== null && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      Latest attempt: {Math.round(latestScorePercent)}%
+                    </Typography>
+                  )}
+                  {masteryPercent !== null && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="overline" color="text.secondary">Overall Mastery</Typography>
+                      <Typography variant="h6">{Math.round(masteryPercent)}%</Typography>
+                    </Box>
                   )}
                 </Box>
               </Box>
 
               <Box sx={{ mt: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Attempt History</Typography>
+                {attemptsLoading && (
+                  <Box sx={{ py: 2 }}>
+                    <LinearProgress />
+                  </Box>
+                )}
+                {attemptsError && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>{attemptsError}</Alert>
+                )}
+                {!attemptsLoading && quizAttempts.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    No recorded attempts yet.
+                  </Typography>
+                )}
+                {!attemptsLoading && quizAttempts.length > 0 && (
+                  <Box display="flex" flexDirection="column" gap={1}>
+                    {quizAttempts.map((attempt, idx) => {
+                      const score = toPercent(attempt.scorePercent);
+                      const timestamp = (() => {
+                        try {
+                          return new Date(attempt.createdAt).toLocaleString();
+                        } catch {
+                          return attempt.createdAt;
+                        }
+                      })();
+                      const isSelected = (selectedAttemptId ? attempt.id === selectedAttemptId : idx === 0);
+                      const chipColor = score !== null && score >= 80 ? 'success' : score !== null && score >= 50 ? 'warning' : 'error';
+                      return (
+                        <Paper
+                          key={attempt.id}
+                          variant={isSelected ? 'outlined' : 'elevation'}
+                          sx={{
+                            p: 1.5,
+                            borderColor: isSelected ? 'primary.main' : undefined,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onClick={() => setSelectedAttemptId(attempt.id)}
+                        >
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: isSelected ? 700 : 500 }}>
+                              Attempt {quizAttempts.length - idx}
+                              {idx === 0 ? ' (Latest)' : ''}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">{timestamp}</Typography>
+                          </Box>
+                          <Chip
+                            label={score !== null ? `${Math.round(score)}%` : '--'}
+                            color={score !== null ? chipColor : 'default'}
+                            size="small"
+                          />
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                )}
+              </Box>
+
+              <Box sx={{ mt: 3 }}>
                 <Typography variant="h6" sx={{ mb: 2 }}>Question Review</Typography>
-                {quizEvaluation.details?.map((detail, idx) => {
-                  const meta = quizQuestionMap[String(detail.questionId)] || quizQuestionMap[String(idx)];
-                  const question = meta?.question;
-                  const questionText = question?.prompt || question?.quiz || quizEvaluation.content?.[idx]?.question || `Question ${idx + 1}`;
-                  const answerValue = meta ? answers[meta.key] : undefined;
-                  const userAnswerText = formatAnswerText(question, answerValue);
-                  const recommended = quizEvaluation.content?.[idx]?.options || [];
+                {(() => {
+                  const details = displayAttempt?.details || quizEvaluation?.details || [];
+                  if (!details.length) {
+                    return (
+                      <Typography variant="body2" color="text.secondary">
+                        No detailed feedback available yet.
+                      </Typography>
+                    );
+                  }
+                  return details.map((detail, idx) => {
+                    const meta = quizQuestionMap[String(detail.questionId)] || quizQuestionMap[String(idx)];
+                    const question = meta?.question;
+                    const activeContent = displayAttempt?.content || quizEvaluation?.content || [];
+                    const questionText = question?.prompt || question?.quiz || activeContent[idx]?.question || `Question ${idx + 1}`;
+                    const isCurrentAttempt = displayAttempt?.id === quizEvaluation?.id;
+                  const answerValue = isCurrentAttempt && meta ? answers[meta.key] : undefined;
+                  const userAnswerText = isCurrentAttempt ? formatAnswerText(question, answerValue) : '—';
+                  const recommended = activeContent[idx]?.options || [];
                   const recommendedText = recommended.length ? recommended.join(', ') : '';
                   const verdictLabel = detail.verdict || 'Reviewed';
                   const verdictLower = verdictLabel.toLowerCase();
@@ -996,7 +1161,8 @@ const StudentLessonPage: React.FC = () => {
                       )}
                     </Paper>
                   );
-                })}
+                  });
+                })()}
               </Box>
 
               <Box display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap" sx={{ mt: 2 }}>

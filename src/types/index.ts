@@ -262,3 +262,5 @@ export interface MaterializationQuizEvaluateResponse {
   details: MaterializationQuizEvaluateDetail[];
   createdAt: string;
 }
+
+export interface MaterializationQuizAttempt extends MaterializationQuizEvaluateResponse {}
