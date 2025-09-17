@@ -61,6 +61,28 @@ const StudentLessonPage: React.FC = () => {
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const startMaterializationRequestedRef = React.useRef(false);
+  const prevLessonStorageKey = React.useMemo(() => {
+    if (!user?.id || !courseId) return null;
+    return `last_lesson_${user.id}_${courseId}`;
+  }, [user?.id, courseId]);
+
+  const getStoredPrevLessonId = React.useCallback(() => {
+    if (!lessonId) return lessonId || '';
+    if (!prevLessonStorageKey || typeof window === 'undefined') return lessonId;
+    try {
+      const stored = localStorage.getItem(prevLessonStorageKey);
+      if (stored && stored.trim().length > 0) {
+        return stored;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return lessonId;
+  }, [prevLessonStorageKey, lessonId]);
+
+  useEffect(() => {
+    startMaterializationRequestedRef.current = false;
+  }, [lessonId]);
 
   const isAnswerInvalid = React.useCallback((q: any, val: any) => {
     const t = String(q?.type || '').toLowerCase();
@@ -160,7 +182,8 @@ const StudentLessonPage: React.FC = () => {
           p = await apiService.getLessonProgress(lessonId);
         } catch (e: any) {
           if (e?.response?.status === 404) {
-            p = await apiService.startLessonProgress(lessonId);
+            const previousLessonId = getStoredPrevLessonId() || lessonId;
+            p = await apiService.startLessonProgress(lessonId, previousLessonId || lessonId);
           } else {
             throw e;
           }
@@ -172,7 +195,7 @@ const StudentLessonPage: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [lessonId, user?.id]);
+  }, [lessonId, user?.id, getStoredPrevLessonId]);
 
   useEffect(() => {
     setQuizEvaluation(null);
@@ -276,6 +299,15 @@ const StudentLessonPage: React.FC = () => {
       cancelled = true;
     };
   }, [user?.id, lessonId, courseId]);
+
+  useEffect(() => {
+    if (!prevLessonStorageKey || !lessonId || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(prevLessonStorageKey, lessonId);
+    } catch {
+      // ignore storage errors
+    }
+  }, [prevLessonStorageKey, lessonId]);
 
   const startPolling = () => {
     let pollInterval: ReturnType<typeof setInterval> | null = null;

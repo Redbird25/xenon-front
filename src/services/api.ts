@@ -224,11 +224,13 @@ class ApiService {
   }
 
   // Lesson progress (server-authoritative step/state)
-  async startLessonProgress(lessonId: string): Promise<LessonProgress> {
+  async startLessonProgress(lessonId: string, prevLessonId?: string): Promise<LessonProgress> {
+    const params: Record<string, string> = { lessonId };
+    if (prevLessonId) params.prevLessonId = prevLessonId;
     const res = await this.api.post<LessonProgress>(
       '/student/lesson-progress/start',
       {},
-      { params: { lessonId } }
+      { params }
     );
     return res.data;
   }

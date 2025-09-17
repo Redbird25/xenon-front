@@ -109,7 +109,7 @@ const CourseDetailPage: React.FC = () => {
   const handleStartCourse = async () => {
     if (!firstLessonId) return;
     try {
-      const p = await api.startLessonProgress(firstLessonId);
+      const p = await api.startLessonProgress(firstLessonId, firstLessonId);
       setProgressByLesson((prev) => ({ ...prev, [firstLessonId]: p }));
       showToast('Course started', 'success');
     } catch (e) {
