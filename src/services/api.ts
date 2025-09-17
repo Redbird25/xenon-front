@@ -382,6 +382,12 @@ class ApiService {
     await this.api.post('/materialization/start', request);
   }
 
+  async retryMaterializationLesson(lessonMaterialId: string, courseId: string): Promise<void> {
+    await this.api.post('/materialization/try-again', undefined, {
+      params: { lessonMaterialId, courseId }
+    });
+  }
+
   // Health check
   async healthCheck(): Promise<any> {
     const response = await this.api.get('/health');

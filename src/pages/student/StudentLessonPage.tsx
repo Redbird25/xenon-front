@@ -61,6 +61,7 @@ const StudentLessonPage: React.FC = () => {
   const [quizEvaluation, setQuizEvaluation] = useState<MaterializationQuizEvaluateResponse | null>(null);
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isRetryingLesson, setIsRetryingLesson] = useState(false);
   const startMaterializationRequestedRef = React.useRef(false);
   const navigationPrevLessonId = React.useMemo(() => {
     const state = location?.state as { prevLessonId?: string | null } | null;
@@ -321,6 +322,24 @@ const StudentLessonPage: React.FC = () => {
       // ignore storage errors
     }
   }, [prevLessonStorageKey, navigationPrevLessonId]);
+
+  const retryLessonGeneration = async () => {
+    if (!materialization?.lessonMaterialId || !courseId || isRetryingLesson) return;
+    setIsRetryingLesson(true);
+    setError(null);
+    try {
+      await apiService.retryMaterializationLesson(materialization.lessonMaterialId, courseId);
+      setMaterialization((prev) => prev ? { ...prev, generationStatus: 'GENERATING' } : prev);
+      showToast('Regenerating lesson content...', 'info');
+      startPolling();
+    } catch (err) {
+      console.error('Failed to restart lesson generation', err);
+      setError('Failed to restart lesson generation');
+      showToast('Failed to restart lesson generation', 'error');
+    } finally {
+      setIsRetryingLesson(false);
+    }
+  };
 
   const startPolling = () => {
     let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -614,9 +633,18 @@ const StudentLessonPage: React.FC = () => {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
           We couldn't prepare your lesson content. Please try again.
         </Typography>
-        <Button variant="contained" onClick={() => window.location.reload()}>
-          Try Again
-        </Button>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="contained"
+            onClick={retryLessonGeneration}
+            disabled={isRetryingLesson}
+          >
+            {isRetryingLesson ? 'Retrying…' : 'Try Again'}
+          </Button>
+          <Button variant="outlined" onClick={() => window.location.reload()} disabled={isRetryingLesson}>
+            Reload Page
+          </Button>
+        </Box>
       </Box>
     );
   }
