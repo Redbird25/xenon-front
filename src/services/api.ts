@@ -272,8 +272,10 @@ class ApiService {
     return res.data;
   }
 
-  async retryMaterializationQuiz(lessonMaterialId: string, courseId: string): Promise<void> {
-    await this.api.post('/materialization/quiz/try-again', {}, { params: { lessonMaterialId, courseId } });
+  async retryMaterializationQuiz(lessonMaterialId: string, courseId?: string): Promise<void> {
+    const params: Record<string, string> = { lessonMaterialId };
+    if (courseId) params.courseId = courseId;
+    await this.api.post('/materialization/quiz/try-again', undefined, { params });
   }
 
   async evaluateMaterializationQuiz(
