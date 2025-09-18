@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -36,6 +36,7 @@ const CourseDetailPage: React.FC = () => {
   const { user } = useAuth();
   const location = useLocation() as any;
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const { data: course, isLoading } = useQuery<BackendCourse>({
     queryKey: ['course_detail', courseId],
@@ -133,7 +134,9 @@ const CourseDetailPage: React.FC = () => {
   const handleStartCourse = async () => {
     if (!firstLessonId) return;
     try {
-      const p = await api.startLessonProgress(firstLessonId, firstLessonId);
+      const index = lessonsFlat.findIndex(l => l.id === firstLessonId);
+      const prevId = resolvePrevLessonId(firstLessonId, index);
+      const p = await api.startLessonProgress(firstLessonId, prevId !== firstLessonId ? prevId : undefined);
       setProgressByLesson((prev) => ({ ...prev, [firstLessonId]: p }));
       showToast('Course started', 'success');
     } catch (e) {
@@ -298,11 +301,17 @@ const CourseDetailPage: React.FC = () => {
                                 size="small"
                                 variant="outlined"
                                 startIcon={<PlayArrow />}
-                                component={Link}
-                                to={`/learn/${courseId}/${lesson.id}`}
-                                state={{ prevLessonId: prevLessonIdForNav }}
                                 disabled={!allowed}
                                 title={tip}
+                                onClick={async () => {
+                                  if (!allowed) return;
+                                  try {
+                                    if (label === 'Start') {
+                                      await api.startLessonProgress(String(lesson.id), prevLessonIdForNav !== lesson.id ? prevLessonIdForNav : undefined);
+                                    }
+                                  } catch {}
+                                  navigate(`/learn/${courseId}/${lesson.id}`, { state: { prevLessonId: prevLessonIdForNav } });
+                                }}
                               >
                                 {label}
                               </Button>

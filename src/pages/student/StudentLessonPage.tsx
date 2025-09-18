@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Box, Typography, Button, CircularProgress, Alert } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
@@ -56,6 +56,11 @@ const StudentLessonPage: React.FC = () => {
   const [minMastery, setMinMastery] = React.useState<number | null>(null);
   const [lessonTitle, setLessonTitle] = React.useState<string | undefined>(undefined);
   const [nextLessonPath, setNextLessonPath] = React.useState<string | null>(null);
+  const [nextLessonId, setNextLessonId] = React.useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation() as any;
+  const navPrevLessonId: string | undefined = (location?.state && typeof location.state.prevLessonId === 'string') ? location.state.prevLessonId : undefined;
+  const startRequestedRef = React.useRef(false);
 
   const toPercent = React.useCallback((value?: number | null) => {
     if (value === undefined || value === null) return null;
@@ -87,7 +92,7 @@ const StudentLessonPage: React.FC = () => {
         try { p = await apiService.getLessonProgress(lessonId); }
         catch (e: any) {
           if (e?.response?.status === 404) {
-            p = await apiService.startLessonProgress(lessonId, lessonId);
+            p = await apiService.startLessonProgress(lessonId, navPrevLessonId);
           } else { throw e; }
         }
         if (p) setLessonProgress(p);
@@ -126,9 +131,12 @@ const StudentLessonPage: React.FC = () => {
       } catch (e: any) {
         if (e?.response?.status === 404) {
           try {
-            await apiService.startMaterialization({ courseId: courseId!, lessonId: lessonId! });
-            showToast('Starting lesson preparation...', 'info');
-            startPollingMaterialization();
+            if (!startRequestedRef.current) {
+              startRequestedRef.current = true;
+              await apiService.startMaterialization({ courseId: courseId!, lessonId: lessonId! });
+              showToast('Starting lesson preparation...', 'info');
+              startPollingMaterialization();
+            }
           } catch { setError('Failed to start lesson preparation'); }
         } else {
           setError('Failed to load lesson content');
@@ -138,6 +146,11 @@ const StudentLessonPage: React.FC = () => {
 
     return () => { cancelled = true; };
   }, [user?.id, courseId, lessonId, showToast, startPollingMaterialization]);
+
+  // Reset start guard when lesson changes
+  React.useEffect(() => {
+    startRequestedRef.current = false;
+  }, [lessonId, courseId, user?.id]);
 
   // Fetch course structure to get lesson metadata (minMastery, title)
   React.useEffect(() => {
@@ -170,6 +183,7 @@ const StudentLessonPage: React.FC = () => {
         }
         setLessonTitle(foundTitle);
         setMinMastery(foundMin);
+        setNextLessonId(nextId);
         setNextLessonPath(nextId ? `/learn/${courseId}/${nextId}` : `/courses/${courseId}`);
       } catch {
         // ignore, sidebar will degrade gracefully
@@ -299,7 +313,14 @@ const StudentLessonPage: React.FC = () => {
     return false;
   }, [quizHidden, quiz, quizEvaluation, quizAttempts.length]);
 
+  const startProgressFor = React.useCallback(async (targetLessonId: string, prevId?: string) => {
+    try {
+      await apiService.startLessonProgress(targetLessonId, prevId);
+    } catch { /* ignore non-critical errors */ }
+  }, []);
+
   const onStartQuiz = React.useCallback(async () => {
+    // Start Quiz inside lesson page should NOT trigger lesson-progress/start
     setActiveStep(1);
     if (!quiz) await refetchQuiz();
   }, [quiz, refetchQuiz]);
@@ -309,6 +330,14 @@ const StudentLessonPage: React.FC = () => {
     setQuizEvaluation(null);
     setSubmitError(null);
   }, []);
+
+  const onRetakeNow = React.useCallback(async () => {
+    setActiveStep(1);
+    setQuizEvaluation(null);
+    setSubmitError(null);
+    setAnswers({});
+    await retryQuizGeneration();
+  }, [retryQuizGeneration]);
 
   const formatAnswerText = React.useCallback((question: MaterializationQuizQuestion | undefined, value: string | string[] | undefined) => {
     if (!value || (Array.isArray(value) && value.length === 0)) return '-';
@@ -580,7 +609,7 @@ const StudentLessonPage: React.FC = () => {
               displayDetails={displayDetails}
               displayContent={displayContent}
               onReviewLesson={() => setActiveStep(0)}
-              onRetakeQuiz={retryQuizGeneration}
+              onRetakeQuiz={onRetakeNow}
               minMasteryPercent={minMastery == null ? null : Math.round(minMastery * 100)}
             />
           )}
@@ -593,11 +622,19 @@ const StudentLessonPage: React.FC = () => {
             attemptsCount={quizAttempts.length}
             latestScorePercent={latestScorePercent}
             onGoTo={(s) => setActiveStep(s === 'content' ? 0 : s === 'quiz' ? 1 : 2)}
-            onRetake={retryQuizGeneration}
+            onRetake={onRetakeNow}
             needsRetake={needsRetake}
             canRetake={canRetake}
             nextLessonPath={nextLessonPath}
             quizAvailable={!quizHidden}
+            onNextLesson={async () => {
+              if (nextLessonId && lessonId) {
+                await startProgressFor(nextLessonId, lessonId);
+                navigate(`/learn/${courseId}/${nextLessonId}`);
+              } else if (nextLessonPath) {
+                navigate(nextLessonPath);
+              }
+            }}
           />
         </Box>
       </Box>

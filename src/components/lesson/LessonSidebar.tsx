@@ -16,6 +16,7 @@ interface LessonSidebarProps {
   canRetake?: boolean;
   nextLessonPath?: string | null;
   quizAvailable?: boolean;
+  onNextLesson?: () => void | Promise<void>;
 }
 
 const LessonSidebar: React.FC<LessonSidebarProps> = ({
@@ -30,6 +31,7 @@ const LessonSidebar: React.FC<LessonSidebarProps> = ({
   canRetake = true,
   nextLessonPath,
   quizAvailable = true,
+  onNextLesson,
 }) => {
   const mastery = masteryPercent !== null ? Math.round(masteryPercent) : null;
   const min = minMastery !== null ? Math.round(minMastery * 100) : null;
@@ -72,18 +74,30 @@ const LessonSidebar: React.FC<LessonSidebarProps> = ({
       <Box display="flex" gap={1} flexWrap="wrap" sx={{ mt: 1.25 }}>
         {!quizAvailable ? (
           nextLessonPath ? (
-            <Button size="small" variant="contained" component={RouterLink} to={nextLessonPath}>
-              Next Lesson
-            </Button>
+            onNextLesson ? (
+              <Button size="small" variant="contained" onClick={() => { void onNextLesson(); }}>
+                Next Lesson
+              </Button>
+            ) : (
+              <Button size="small" variant="contained" component={RouterLink} to={nextLessonPath}>
+                Next Lesson
+              </Button>
+            )
           ) : null
         ) : attemptsCount === 0 ? (
           <Button size="small" variant="contained" onClick={() => onGoTo('quiz')}>
             Start Quiz
           </Button>
         ) : (!canRetake || !needsRetake) && nextLessonPath ? (
-          <Button size="small" variant="contained" component={RouterLink} to={nextLessonPath}>
-            Next Lesson
-          </Button>
+          onNextLesson ? (
+            <Button size="small" variant="contained" onClick={() => { void onNextLesson(); }}>
+              Next Lesson
+            </Button>
+          ) : (
+            <Button size="small" variant="contained" component={RouterLink} to={nextLessonPath}>
+              Next Lesson
+            </Button>
+          )
         ) : (
           <Button size="small" variant="contained" onClick={() => onRetake()} disabled={!canRetake}>
             Retake Quiz
