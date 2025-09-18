@@ -18,6 +18,17 @@ code {
 
 #root { min-height: 100vh; }
 
+/* Fluid type-scale and spacing */
+html {
+  /* Slight fluid root font-size for more adaptive feel */
+  font-size: clamp(14px, 0.9vw + 12px, 18px);
+}
+
+:root {
+  --container-max: 1440px;
+  --page-padding-x: clamp(12px, 2vw, 24px);
+}
+
 /* Typography wrapping on small screens */
 h1, h2, h3, h4, h5, h6, .MuiTypography-root {
   overflow-wrap: anywhere;

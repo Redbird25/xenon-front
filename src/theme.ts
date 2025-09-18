@@ -1,4 +1,4 @@
-import { alpha, createTheme, ThemeOptions } from '@mui/material/styles';
+import { alpha, createTheme, ThemeOptions, responsiveFontSizes } from '@mui/material/styles';
 
 const neonPrimary = '#7C3AED';
 const neonCyan = '#00E5FF';
@@ -98,7 +98,7 @@ const common: ThemeOptions = {
 };
 
 export const createXenonTheme = (mode: 'light' | 'dark') =>
-  createTheme({
+  responsiveFontSizes(createTheme({
     ...common,
     palette: {
       mode,
@@ -154,4 +154,4 @@ export const createXenonTheme = (mode: 'light' | 'dark') =>
         },
       },
     },
-  });
+  }));
